@@ -14,8 +14,8 @@ export class DevelopmentConfigService implements TypeOrmOptionsFactory {
       type: 'postgres',
       url: this.configService.get<string>('DB_DEVELOPMENT_URL'),
       entities: [...entities],
-      logging: process.env.NODE_ENV !== 'production',
-      synchronize: process.env.TYPEORM_SYNC !== 'false',
+      logging: process.env.NODE_ENV === 'development' ? true : false,
+      synchronize: process.env.NODE_ENV === 'development' ? true : false,
     };
   }
 }
