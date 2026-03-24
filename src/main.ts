@@ -16,12 +16,9 @@ async function bootstrap() {
       transform: true,
     }),
   );
-  const parsed = parseInt(process.env.APP_PORT ?? '5000', 10);
-  const port =
-    Number.isFinite(parsed) && parsed >= 0 && parsed < 65536 ? parsed : 5000;
-  await app.listen(port, '0.0.0.0', () => {
-    console.log(`Your app runs on http://localhost:${port}/graphql`);
-  });
+  const PORT = process.env.APP_PORT || process.env.PORT as string
+  await app.listen(PORT, '0.0.0.0', () => { console.log(`${`Your app runs on http://localhost:${PORT}/graphql`}`) });
+  // await app.listen(PORT, '0.0.0.0', () => { console.log(`${`Your app runs on http://localhost:${PORT}/graphql`}`) }
 }
 
 void bootstrap();
