@@ -6,6 +6,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { SelectDaysInput } from './dto/select-days.input';
 import { UseGuards } from '@nestjs/common';
 import { ActiveSavingPlanModel } from './models/active-saving-plan.model';
+import { SavingPlanModel } from './models/saving-plan.model';
 
 @Resolver()
 export class PlansResolver {
@@ -29,5 +30,10 @@ export class PlansResolver {
     @CurrentUser() user: JwtUser,
   ): Promise<ActiveSavingPlanModel | null> {
     return this.plansService.findActiveUserChallenge(user.id);
+  }
+
+  @Query(() => [SavingPlanModel], { name: 'plans' })
+  plans(): Promise<SavingPlanModel[]> {
+    return this.plansService.findActivePlans();
   }
 }
