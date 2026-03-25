@@ -6,6 +6,7 @@ import { UserSavingPlan } from '../plans/user-saving-plan.entity';
 import { GlobalWallet } from './global-wallet.entity';
 import { ChallengeWallet } from './challenge-wallet.entity';
 import { WalletTransaction } from './wallet-transaction.entity';
+import { In } from 'typeorm';
 import { WalletTransactionType, WalletType } from './wallet-transaction.entity';
 import { DailyChallengeClaim } from './daily-challenge-claim.entity';
 import { TodayClaimModel } from './models/today-claim.model';
@@ -57,6 +58,63 @@ export class WalletService {
     @InjectRepository(UserSavingPlan)
     private readonly userSavingPlansRepo: Repository<UserSavingPlan>,
   ) {}
+
+  async resetUserChallenges(userId: string): Promise<{
+    ok: boolean;
+    message: string;
+    clearedDays: number | null;
+  }> {
+    const active = await this.userSavingPlansRepo.findOne({
+      where: { userId, isActive: true },
+      order: { endAt: 'DESC' },
+    });
+
+    const clearedDays = active?.totalDays ?? null;
+
+    // Collect plan ids before deletion.
+    const planIds = await this.userSavingPlansRepo.find({
+      where: { userId },
+      select: { id: true },
+    });
+
+    const planIdValues = planIds.map((p) => p.id);
+
+    await this.dailyClaimRepo.manager.transaction(async (manager) => {
+      const globalRepo = manager.getRepository(GlobalWallet);
+      const challengeWalletRepo = manager.getRepository(ChallengeWallet);
+      const walletTxRepo = manager.getRepository(WalletTransaction);
+      const dailyClaimRepo = manager.getRepository(DailyChallengeClaim);
+      const completedRepo = manager.getRepository(CompletedChallenge);
+      const userSavingPlansRepo = manager.getRepository(UserSavingPlan);
+
+      // Wallet transactions are keyed by user_id.
+      await walletTxRepo.delete({ userId });
+
+      if (planIdValues.length > 0) {
+        await dailyClaimRepo.delete({
+          userSavingPlanId: In(planIdValues),
+        });
+
+        await challengeWalletRepo.delete({
+          userSavingPlanId: In(planIdValues),
+        });
+      }
+
+      await completedRepo.delete({ userId });
+      await globalRepo.delete({ userId });
+      await userSavingPlansRepo.delete({ userId });
+    });
+
+    const message = active
+      ? `Done reset your challenge. Cleared: ${active.totalDays} days.`
+      : 'Done reset your challenge. No active challenge found.';
+
+    return {
+      ok: true,
+      message,
+      clearedDays,
+    };
+  }
 
   private toActiveSavingPlanModel(row: UserSavingPlan): ActiveSavingPlanModel {
     return {

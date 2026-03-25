@@ -6,6 +6,9 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ClaimChallengeDayInput } from './dto/claim-challenge-day.input';
 import { MyChallengeRoomModel } from './models/my-challenge-room.model';
 import { WalletService } from './wallet.service';
+import { ResetUserChallengesPayloadModel } from './models/reset-user-challenges-payload.model';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
 
 @Resolver()
 export class WalletResolver {
@@ -34,5 +37,16 @@ export class WalletResolver {
     @CurrentUser() user: JwtUser,
   ): Promise<MyChallengeRoomModel> {
     return this.walletService.stopChallengeAndTransfer(user.id);
+  }
+
+  @Mutation(() => ResetUserChallengesPayloadModel, {
+    name: 'resetUserChallenges',
+  })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  resetUserChallenges(
+    @Args('user_id') userId: string,
+  ): Promise<ResetUserChallengesPayloadModel> {
+    return this.walletService.resetUserChallenges(userId);
   }
 }

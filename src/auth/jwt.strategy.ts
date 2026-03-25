@@ -8,6 +8,7 @@ export type JwtUser = {
   id: string;
   email: string;
   displayName: string | null;
+  roles: string[];
   createdAt: Date;
 };
 
@@ -40,10 +41,12 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     if (!user) {
       return null;
     }
+    const roles = user.roles?.roles ?? ['USER'];
     return {
       id: user.id,
       email: user.email,
       displayName: user.displayName,
+      roles,
       createdAt: user.createdAt,
     };
   }

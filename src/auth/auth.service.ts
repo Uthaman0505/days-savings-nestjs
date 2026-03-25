@@ -114,6 +114,7 @@ export class AuthService {
         sub: user.id,
         email: user.email,
         typ: 'access',
+        roles: user.roles?.roles ?? ['USER'],
       },
       accessSign,
     );

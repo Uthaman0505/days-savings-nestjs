@@ -20,6 +20,15 @@ export class User {
   @Column({ name: 'display_name', type: 'varchar', nullable: true })
   displayName: string | null;
 
+  @Column({
+    type: 'jsonb',
+    nullable: false,
+    // TypeORM expects a SQL default expression (string), not an object literal.
+    // This ensures schema sync can create/alter the `roles` jsonb column successfully.
+    default: () => "'{\"roles\":[\"USER\"]}'::jsonb",
+  })
+  roles: { roles: string[] };
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

@@ -8,6 +8,7 @@ import { CompletedChallenge } from './completed-challenge.entity';
 import { UserSavingPlan } from '../plans/user-saving-plan.entity';
 import { WalletResolver } from './wallet.resolver';
 import { WalletService } from './wallet.service';
+import { RolesGuard } from '../auth/roles.guard';
 
 @Module({
   imports: [
@@ -20,6 +21,6 @@ import { WalletService } from './wallet.service';
       UserSavingPlan,
     ]),
   ],
-  providers: [WalletService, WalletResolver],
+  providers: [WalletService, WalletResolver, RolesGuard],
 })
 export class WalletModule {}
