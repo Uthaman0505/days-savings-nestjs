@@ -6,6 +6,7 @@ import { AppResolver } from './app.resolver';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { DatabaseModule } from './database/database.module';
+import { PlansModule } from './plans/plans.module';
 import { UserModule } from './user/user.module';
 
 @Module({
@@ -21,6 +22,7 @@ import { UserModule } from './user/user.module';
       context: ({ req }: { req: unknown }) => ({ req }),
     }),
     AuthModule,
+    PlansModule,
     UserModule,
   ],
   providers: [AppService, AppResolver],
