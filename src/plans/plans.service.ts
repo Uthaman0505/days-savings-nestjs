@@ -8,6 +8,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { SavingPlan } from './saving-plan.entity';
 import { UserSavingPlan } from './user-saving-plan.entity';
+import { GlobalWallet } from '../wallet/global-wallet.entity';
+import { ChallengeWallet } from '../wallet/challenge-wallet.entity';
+import { CompletedChallenge } from '../wallet/completed-challenge.entity';
 
 const DEFAULT_TOTAL_DAYS: number[] = Array.from(
   { length: 14 },
@@ -33,6 +36,12 @@ export class PlansService implements OnModuleInit {
     private readonly savingPlansRepo: Repository<SavingPlan>,
     @InjectRepository(UserSavingPlan)
     private readonly userSavingPlansRepo: Repository<UserSavingPlan>,
+    @InjectRepository(GlobalWallet)
+    private readonly globalWalletRepo: Repository<GlobalWallet>,
+    @InjectRepository(ChallengeWallet)
+    private readonly challengeWalletRepo: Repository<ChallengeWallet>,
+    @InjectRepository(CompletedChallenge)
+    private readonly completedChallengesRepo: Repository<CompletedChallenge>,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -122,6 +131,16 @@ export class PlansService implements OnModuleInit {
   }> {
     const now = new Date();
 
+    const alreadyCompleted = await this.completedChallengesRepo.findOne({
+      where: { userId, totalDays },
+    });
+
+    if (alreadyCompleted) {
+      throw new BadRequestException(
+        'You already completed this challenge option. Please choose another duration.',
+      );
+    }
+
     const plan = await this.savingPlansRepo.findOne({
       where: { totalDays, isActive: true },
     });
@@ -137,15 +156,10 @@ export class PlansService implements OnModuleInit {
     });
 
     if (existingActive) {
-      if (existingActive.endAt.getTime() > now.getTime()) {
-        throw new BadRequestException(
-          'You already have an active challenge. Please wait until it finishes.',
-        );
-      }
-
-      // Expired: deactivate it and allow the new selection.
-      existingActive.isActive = false;
-      await this.userSavingPlansRepo.save(existingActive);
+      // Even if endAt is already passed, the user must press Stop to transfer.
+      throw new BadRequestException(
+        'Please stop your current challenge to transfer to Global wallet before choosing another duration.',
+      );
     }
 
     const startAt = now;
@@ -164,6 +178,23 @@ export class PlansService implements OnModuleInit {
     });
 
     const saved = await this.userSavingPlansRepo.save(record);
+
+    // Wallet initialization (stored in cents).
+    let globalWallet = await this.globalWalletRepo.findOne({
+      where: { userId },
+    });
+    if (!globalWallet) {
+      globalWallet = await this.globalWalletRepo.save(
+        this.globalWalletRepo.create({ userId, balanceCents: 0 }),
+      );
+    }
+
+    await this.challengeWalletRepo.save(
+      this.challengeWalletRepo.create({
+        userSavingPlanId: saved.id,
+        balanceCents: 0,
+      }),
+    );
 
     return {
       id: saved.id,
@@ -185,21 +216,12 @@ export class PlansService implements OnModuleInit {
     endAt: Date;
     isActive: boolean;
   } | null> {
-    const now = new Date();
-
     const existingActive = await this.userSavingPlansRepo.findOne({
       where: { userId, isActive: true },
       order: { endAt: 'DESC' },
     });
 
     if (!existingActive) return null;
-
-    // If somehow marked active but expired, clean it up.
-    if (existingActive.endAt.getTime() <= now.getTime()) {
-      existingActive.isActive = false;
-      await this.userSavingPlansRepo.save(existingActive);
-      return null;
-    }
 
     return {
       id: existingActive.id,
