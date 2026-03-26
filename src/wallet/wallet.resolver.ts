@@ -5,6 +5,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ClaimChallengeDayInput } from './dto/claim-challenge-day.input';
 import { MyChallengeRoomModel } from './models/my-challenge-room.model';
+import { MyWalletOverviewModel } from './models/my-wallet-overview.model';
 import { WalletService } from './wallet.service';
 import { ResetUserChallengesPayloadModel } from './models/reset-user-challenges-payload.model';
 import { AdminCompleteChallengePayloadModel } from './models/admin-complete-challenge-payload.model';
@@ -19,6 +20,14 @@ export class WalletResolver {
   @UseGuards(JwtAuthGuard)
   myChallengeRoom(@CurrentUser() user: JwtUser): Promise<MyChallengeRoomModel> {
     return this.walletService.getMyChallengeRoom(user.id);
+  }
+
+  @Query(() => MyWalletOverviewModel, { name: 'myWalletOverview' })
+  @UseGuards(JwtAuthGuard)
+  myWalletOverview(
+    @CurrentUser() user: JwtUser,
+  ): Promise<MyWalletOverviewModel> {
+    return this.walletService.getMyWalletOverview(user.id);
   }
 
   @Mutation(() => MyChallengeRoomModel, { name: 'claimChallengeDay' })

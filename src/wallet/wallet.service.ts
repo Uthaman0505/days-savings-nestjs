@@ -11,6 +11,7 @@ import { WalletTransactionType, WalletType } from './wallet-transaction.entity';
 import { DailyChallengeClaim } from './daily-challenge-claim.entity';
 import { TodayClaimModel } from './models/today-claim.model';
 import { MyChallengeRoomModel } from './models/my-challenge-room.model';
+import { MyWalletOverviewModel } from './models/my-wallet-overview.model';
 import { CompletedChallenge } from './completed-challenge.entity';
 import { GiveUpChallenge } from './give-up-challenge.entity';
 import { DailyChallengeClaim as DailyClaimRow } from './daily-challenge-claim.entity';
@@ -203,6 +204,47 @@ export class WalletService {
       canStop,
       canGiveUp,
     } as MyChallengeRoomModel;
+  }
+
+  async getMyWalletOverview(userId: string): Promise<MyWalletOverviewModel> {
+    const [globalWallet, active, recentTx] = await Promise.all([
+      this.globalWalletRepo.findOne({ where: { userId } }),
+      this.userSavingPlansRepo.findOne({
+        where: { userId, isActive: true },
+        order: { endAt: 'DESC' },
+      }),
+      this.walletTxRepo.find({
+        where: { userId },
+        order: { createdAt: 'DESC' },
+        take: 20,
+      }),
+    ]);
+
+    const globalWalletBalanceCents = globalWallet?.balanceCents ?? 0;
+    let challengeWalletBalanceCents = 0;
+    if (active) {
+      const challengeWallet = await this.challengeWalletRepo.findOne({
+        where: { userSavingPlanId: active.id },
+      });
+      challengeWalletBalanceCents = challengeWallet?.balanceCents ?? 0;
+    }
+
+    return {
+      globalWalletBalance: Math.floor(globalWalletBalanceCents / 100),
+      challengeWalletBalance: Math.floor(challengeWalletBalanceCents / 100),
+      totalWalletBalance: Math.floor(
+        (globalWalletBalanceCents + challengeWalletBalanceCents) / 100,
+      ),
+      recentTransactions: recentTx.map((row) => ({
+        id: row.id,
+        walletType: row.walletType,
+        type: row.type,
+        amount: Math.floor(row.amountCents / 100),
+        balanceAfter: Math.floor(row.balanceAfterCents / 100),
+        referenceType: row.referenceType,
+        createdAt: row.createdAt.toISOString(),
+      })),
+    } as MyWalletOverviewModel;
   }
 
   private computeCreditAmountCents(dayNumber: number): number {
