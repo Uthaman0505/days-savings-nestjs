@@ -39,11 +39,19 @@ export class PlansResolver {
 
   @Query(() => [Int], {
     name: 'myCompletedPlanTotalDays',
-    description:
-      'Day counts the user cannot start again (completed challenge or gave up).',
+    description: 'Day counts the user completed.',
   })
   @UseGuards(JwtAuthGuard)
   myCompletedPlanTotalDays(@CurrentUser() user: JwtUser): Promise<number[]> {
     return this.plansService.findCompletedTotalDaysForUser(user.id);
+  }
+
+  @Query(() => [Int], {
+    name: 'myGaveUpPlanTotalDays',
+    description: 'Day counts the user gave up (cannot start again).',
+  })
+  @UseGuards(JwtAuthGuard)
+  myGaveUpPlanTotalDays(@CurrentUser() user: JwtUser): Promise<number[]> {
+    return this.plansService.findGaveUpTotalDaysForUser(user.id);
   }
 }

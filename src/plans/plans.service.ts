@@ -220,28 +220,22 @@ export class PlansService implements OnModuleInit {
     };
   }
 
-  /**
-   * Total-day values the user can no longer subscribe to (completed or gave up).
-   */
   async findCompletedTotalDaysForUser(userId: string): Promise<number[]> {
-    const [completedRows, gaveUpRows] = await Promise.all([
-      this.completedChallengesRepo.find({
-        where: { userId },
-        select: { totalDays: true },
-      }),
-      this.giveUpChallengesRepo.find({
-        where: { userId },
-        select: { totalDays: true },
-      }),
-    ]);
-    const merged = new Set<number>();
-    for (const r of completedRows) {
-      merged.add(r.totalDays);
-    }
-    for (const r of gaveUpRows) {
-      merged.add(r.totalDays);
-    }
-    return Array.from(merged).sort((a, b) => a - b);
+    const rows = await this.completedChallengesRepo.find({
+      where: { userId },
+      select: { totalDays: true },
+      order: { totalDays: 'ASC' },
+    });
+    return rows.map((r) => r.totalDays);
+  }
+
+  async findGaveUpTotalDaysForUser(userId: string): Promise<number[]> {
+    const rows = await this.giveUpChallengesRepo.find({
+      where: { userId },
+      select: { totalDays: true },
+      order: { totalDays: 'ASC' },
+    });
+    return rows.map((r) => r.totalDays);
   }
 
   async findActiveUserChallenge(userId: string): Promise<{
