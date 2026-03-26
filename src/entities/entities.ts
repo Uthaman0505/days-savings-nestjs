@@ -8,6 +8,7 @@ import { WalletTransaction } from '../wallet/wallet-transaction.entity';
 import { DailyChallengeClaim } from '../wallet/daily-challenge-claim.entity';
 import { CompletedChallenge } from '../wallet/completed-challenge.entity';
 import { GiveUpChallenge } from '../wallet/give-up-challenge.entity';
+import { DailyTransactionLeverage } from '../wallet/daily-transaction-leverage.entity';
 
 export const entities = [
   User,
@@ -20,4 +21,5 @@ export const entities = [
   DailyChallengeClaim,
   CompletedChallenge,
   GiveUpChallenge,
+  DailyTransactionLeverage,
 ];

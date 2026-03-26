@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ActiveSavingPlanModel } from '../plans/models/active-saving-plan.model';
@@ -14,10 +19,21 @@ import { MyChallengeRoomModel } from './models/my-challenge-room.model';
 import { MyWalletOverviewModel } from './models/my-wallet-overview.model';
 import { CompletedChallenge } from './completed-challenge.entity';
 import { GiveUpChallenge } from './give-up-challenge.entity';
-import { DailyChallengeClaim as DailyClaimRow } from './daily-challenge-claim.entity';
+import { DailyTransactionLeverage } from './daily-transaction-leverage.entity';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const MALAYSIA_OFFSET_MS = 8 * 60 * 60 * 1000; // UTC+8, Malaysia has no DST
+const DEFAULT_DAILY_LEVERAGES: Array<{
+  minCompletedChallenges: number;
+  allowedTransactionsPerDay: number;
+}> = [
+  { minCompletedChallenges: 0, allowedTransactionsPerDay: 1 },
+  { minCompletedChallenges: 1, allowedTransactionsPerDay: 2 },
+  { minCompletedChallenges: 2, allowedTransactionsPerDay: 4 },
+  { minCompletedChallenges: 3, allowedTransactionsPerDay: 6 },
+  { minCompletedChallenges: 4, allowedTransactionsPerDay: 5 },
+  { minCompletedChallenges: 5, allowedTransactionsPerDay: 6 },
+];
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0');
@@ -45,7 +61,9 @@ function nextMalaysiaMidnight(now: Date): Date {
 }
 
 @Injectable()
-export class WalletService {
+export class WalletService implements OnModuleInit {
+  private readonly logger = new Logger(WalletService.name);
+
   constructor(
     @InjectRepository(GlobalWallet)
     private readonly globalWalletRepo: Repository<GlobalWallet>,
@@ -57,9 +75,45 @@ export class WalletService {
     private readonly dailyClaimRepo: Repository<DailyChallengeClaim>,
     @InjectRepository(CompletedChallenge)
     private readonly completedChallengesRepo: Repository<CompletedChallenge>,
+    @InjectRepository(DailyTransactionLeverage)
+    private readonly leverageRepo: Repository<DailyTransactionLeverage>,
     @InjectRepository(UserSavingPlan)
     private readonly userSavingPlansRepo: Repository<UserSavingPlan>,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.seedDefaultDailyLeverages();
+  }
+
+  private async seedDefaultDailyLeverages(): Promise<void> {
+    try {
+      const existingRows = await this.leverageRepo.find();
+      const existingByMin = new Map<number, DailyTransactionLeverage>(
+        existingRows.map((row) => [row.minCompletedChallenges, row]),
+      );
+      const toSave: DailyTransactionLeverage[] = [];
+
+      for (const item of DEFAULT_DAILY_LEVERAGES) {
+        const existing = existingByMin.get(item.minCompletedChallenges);
+        if (!existing) {
+          toSave.push(this.leverageRepo.create(item));
+          continue;
+        }
+        if (
+          existing.allowedTransactionsPerDay !== item.allowedTransactionsPerDay
+        ) {
+          existing.allowedTransactionsPerDay = item.allowedTransactionsPerDay;
+          toSave.push(existing);
+        }
+      }
+
+      if (toSave.length > 0) {
+        await this.leverageRepo.save(toSave);
+      }
+    } catch (e) {
+      this.logger.warn(`Skipping daily leverage seed: ${(e as Error).message}`);
+    }
+  }
 
   async resetUserChallenges(userId: string): Promise<{
     ok: boolean;
@@ -133,15 +187,40 @@ export class WalletService {
   }
 
   private toTodayClaimModel(
-    claim: DailyClaimRow | null,
+    claimsTodayCount: number,
+    allowedClaimsToday: number,
     now: Date,
   ): TodayClaimModel {
     const next = nextMalaysiaMidnight(now);
+    const remainingClaimsToday = Math.max(
+      0,
+      allowedClaimsToday - claimsTodayCount,
+    );
     return {
-      isClaimed: !!claim,
-      claimedDayNumber: claim?.claimedDayNumber ?? null,
+      isClaimed: claimsTodayCount > 0,
+      claimedDayNumber: null,
+      claimsTodayCount,
+      allowedClaimsToday,
+      remainingClaimsToday,
       nextAvailableAt: next,
     } as TodayClaimModel;
+  }
+
+  private async resolveAllowedTransactionsPerDay(
+    completedCount: number,
+  ): Promise<number> {
+    const rows = await this.leverageRepo.find({
+      order: { minCompletedChallenges: 'ASC' },
+    });
+    if (rows.length === 0) return 1;
+
+    let allowed = rows[0].allowedTransactionsPerDay;
+    for (const row of rows) {
+      if (completedCount >= row.minCompletedChallenges) {
+        allowed = row.allowedTransactionsPerDay;
+      }
+    }
+    return allowed;
   }
 
   async getMyChallengeRoom(userId: string): Promise<MyChallengeRoomModel> {
@@ -161,7 +240,7 @@ export class WalletService {
     // If there is no active challenge, return empty room state but still
     // show global wallet balance.
     if (!active) {
-      const emptyToday = this.toTodayClaimModel(null, now);
+      const emptyToday = this.toTodayClaimModel(0, 1, now);
       return {
         activeChallenge: null,
         globalWalletBalance: Math.floor(globalWalletBalanceCents / 100),
@@ -179,9 +258,14 @@ export class WalletService {
     const challengeWalletBalanceCents = challengeWallet?.balanceCents ?? 0;
 
     const claimDateKey = toMalaysiaDateKey(now);
-    const todayClaimRow = await this.dailyClaimRepo.findOne({
+    const todayClaimsCount = await this.dailyClaimRepo.count({
       where: { userSavingPlanId: active.id, claimDateKey },
     });
+    const completedCount = await this.completedChallengesRepo.count({
+      where: { userId },
+    });
+    const allowedClaimsToday =
+      await this.resolveAllowedTransactionsPerDay(completedCount);
 
     const allClaims = await this.dailyClaimRepo.find({
       where: { userSavingPlanId: active.id },
@@ -200,7 +284,11 @@ export class WalletService {
       globalWalletBalance: Math.floor(globalWalletBalanceCents / 100),
       challengeWalletBalance: Math.floor(challengeWalletBalanceCents / 100),
       claimedDayNumbers,
-      todayClaim: this.toTodayClaimModel(todayClaimRow, now),
+      todayClaim: this.toTodayClaimModel(
+        todayClaimsCount,
+        allowedClaimsToday,
+        now,
+      ),
       canStop,
       canGiveUp,
     } as MyChallengeRoomModel;
@@ -286,15 +374,13 @@ export class WalletService {
 
     const claimDateKey = toMalaysiaDateKey(now);
     const creditCents = this.computeCreditAmountCents(dayNumber);
+    const completedCount = await this.completedChallengesRepo.count({
+      where: { userId },
+    });
+    const allowedTxPerDay =
+      await this.resolveAllowedTransactionsPerDay(completedCount);
 
     // Pre-check to return user-friendly messages.
-    const todayClaim = await this.dailyClaimRepo.findOne({
-      where: { userSavingPlanId: active.id, claimDateKey },
-    });
-    if (todayClaim) {
-      throw new BadRequestException('You can top up after 12AM next day.');
-    }
-
     const dayAlreadyClaimed = await this.dailyClaimRepo.findOne({
       where: { userSavingPlanId: active.id, claimedDayNumber: dayNumber },
     });
@@ -307,6 +393,15 @@ export class WalletService {
       const challengeWalletRepo = manager.getRepository(ChallengeWallet);
       const walletTxRepo = manager.getRepository(WalletTransaction);
       const globalWalletRepo = manager.getRepository(GlobalWallet);
+      const todayTxCount = await dailyRepo.count({
+        where: { userSavingPlanId: active.id, claimDateKey },
+      });
+
+      if (todayTxCount >= allowedTxPerDay) {
+        throw new BadRequestException(
+          'Daily transaction limit reached. Try again after 12AM next day.',
+        );
+      }
 
       // Ensure wallets exist (preferably created during subscribe, but fail-soft).
       let challengeWallet = await challengeWalletRepo.findOne({

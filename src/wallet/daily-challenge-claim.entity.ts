@@ -8,11 +8,10 @@ import {
 } from 'typeorm';
 
 @Entity('daily_challenge_claims')
-@Index(
-  'idx_daily_challenge_claims_user_plan_date',
-  ['userSavingPlanId', 'claimDateKey'],
-  { unique: true },
-)
+@Index('idx_daily_challenge_claims_user_plan_date', [
+  'userSavingPlanId',
+  'claimDateKey',
+])
 @Index(
   'idx_daily_challenge_claims_user_plan_day',
   ['userSavingPlanId', 'claimedDayNumber'],
