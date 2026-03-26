@@ -27,4 +27,7 @@ export class MyChallengeRoomModel {
 
   @Field(() => Boolean, { name: 'can_give_up' })
   canGiveUp: boolean;
+
+  @Field(() => String, { name: 'new_year_reset_notice', nullable: true })
+  newYearResetNotice: string | null;
 }

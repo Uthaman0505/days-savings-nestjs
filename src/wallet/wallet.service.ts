@@ -5,7 +5,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { ActiveSavingPlanModel } from '../plans/models/active-saving-plan.model';
 import { UserSavingPlan } from '../plans/user-saving-plan.entity';
 import { GlobalWallet } from './global-wallet.entity';
@@ -20,6 +20,7 @@ import { MyWalletOverviewModel } from './models/my-wallet-overview.model';
 import { CompletedChallenge } from './completed-challenge.entity';
 import { GiveUpChallenge } from './give-up-challenge.entity';
 import { DailyTransactionLeverage } from './daily-transaction-leverage.entity';
+import { YearlyChallengeReset } from './yearly-challenge-reset.entity';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const MALAYSIA_OFFSET_MS = 8 * 60 * 60 * 1000; // UTC+8, Malaysia has no DST
@@ -41,6 +42,10 @@ function pad2(n: number): string {
 
 function malaysiaNow(now: Date): Date {
   return new Date(now.getTime() + MALAYSIA_OFFSET_MS);
+}
+
+function currentMalaysiaYear(now: Date): number {
+  return malaysiaNow(now).getUTCFullYear();
 }
 
 function toMalaysiaDateKey(now: Date): string {
@@ -79,6 +84,8 @@ export class WalletService implements OnModuleInit {
     private readonly leverageRepo: Repository<DailyTransactionLeverage>,
     @InjectRepository(UserSavingPlan)
     private readonly userSavingPlansRepo: Repository<UserSavingPlan>,
+    @InjectRepository(YearlyChallengeReset)
+    private readonly yearlyChallengeResetRepo: Repository<YearlyChallengeReset>,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -223,8 +230,104 @@ export class WalletService implements OnModuleInit {
     return allowed;
   }
 
+  private async applyNewYearRolloverIfNeeded(userId: string): Promise<void> {
+    const now = new Date();
+    const nowYear = currentMalaysiaYear(now);
+    const active = await this.userSavingPlansRepo.findOne({
+      where: { userId, isActive: true },
+      order: { endAt: 'DESC' },
+    });
+    if (!active) return;
+
+    const activeYear = currentMalaysiaYear(active.startAt);
+    if (activeYear === nowYear) return;
+
+    await this.dailyClaimRepo.manager.transaction(async (manager) => {
+      const globalWalletRepo = manager.getRepository(GlobalWallet);
+      const challengeWalletRepo = manager.getRepository(ChallengeWallet);
+      const walletTxRepo = manager.getRepository(WalletTransaction);
+      const userSavingPlansRepo = manager.getRepository(UserSavingPlan);
+      const yearlyResetRepo = manager.getRepository(YearlyChallengeReset);
+
+      const activeInsideTx = await userSavingPlansRepo.findOne({
+        where: { id: active.id, isActive: true },
+      });
+      if (!activeInsideTx) return;
+
+      let globalWallet = await globalWalletRepo.findOne({ where: { userId } });
+      if (!globalWallet) {
+        globalWallet = await globalWalletRepo.save(
+          globalWalletRepo.create({ userId, balanceCents: 0 }),
+        );
+      }
+
+      let challengeWallet = await challengeWalletRepo.findOne({
+        where: { userSavingPlanId: activeInsideTx.id },
+      });
+      if (!challengeWallet) {
+        challengeWallet = await challengeWalletRepo.save(
+          challengeWalletRepo.create({
+            userSavingPlanId: activeInsideTx.id,
+            balanceCents: 0,
+          }),
+        );
+      }
+
+      const transferredCents = challengeWallet.balanceCents ?? 0;
+      if (transferredCents > 0) {
+        challengeWallet.balanceCents = 0;
+        globalWallet.balanceCents =
+          (globalWallet.balanceCents ?? 0) + transferredCents;
+
+        await challengeWalletRepo.save(challengeWallet);
+        await globalWalletRepo.save(globalWallet);
+
+        await walletTxRepo.save(
+          walletTxRepo.create({
+            walletType: 'CHALLENGE' as WalletType,
+            walletId: challengeWallet.id,
+            userId,
+            type: 'DEBIT' as WalletTransactionType,
+            amountCents: transferredCents,
+            balanceAfterCents: 0,
+            referenceType: 'NEW_YEAR_RESET',
+            referenceId: activeInsideTx.id,
+          }),
+        );
+
+        await walletTxRepo.save(
+          walletTxRepo.create({
+            walletType: 'GLOBAL' as WalletType,
+            walletId: globalWallet.id,
+            userId,
+            type: 'CREDIT' as WalletTransactionType,
+            amountCents: transferredCents,
+            balanceAfterCents: globalWallet.balanceCents,
+            referenceType: 'NEW_YEAR_RESET',
+            referenceId: activeInsideTx.id,
+          }),
+        );
+      }
+
+      activeInsideTx.isActive = false;
+      await userSavingPlansRepo.save(activeInsideTx);
+      await yearlyResetRepo.save(
+        yearlyResetRepo.create({
+          userId,
+          userSavingPlanId: activeInsideTx.id,
+          fromYear: activeYear,
+          toYear: nowYear,
+          transferredCents,
+          reason: 'NEW_YEAR_RESET',
+          notifiedAt: null,
+        }),
+      );
+    });
+  }
+
   async getMyChallengeRoom(userId: string): Promise<MyChallengeRoomModel> {
     const now = new Date();
+    await this.applyNewYearRolloverIfNeeded(userId);
 
     const active = await this.userSavingPlansRepo.findOne({
       where: { userId, isActive: true },
@@ -236,6 +339,19 @@ export class WalletService implements OnModuleInit {
     });
 
     const globalWalletBalanceCents = globalWallet?.balanceCents ?? 0;
+    const pendingResetNotice = await this.yearlyChallengeResetRepo.findOne({
+      where: { userId, notifiedAt: IsNull() },
+      order: { createdAt: 'DESC' },
+    });
+    if (pendingResetNotice) {
+      pendingResetNotice.notifiedAt = new Date();
+      await this.yearlyChallengeResetRepo.save(pendingResetNotice);
+    }
+    const newYearResetNotice = pendingResetNotice
+      ? `Challenge stopped for New Year reset and RM ${Math.floor(
+          pendingResetNotice.transferredCents / 100,
+        )} credited to Global wallet.`
+      : null;
 
     // If there is no active challenge, return empty room state but still
     // show global wallet balance.
@@ -249,6 +365,7 @@ export class WalletService implements OnModuleInit {
         todayClaim: emptyToday,
         canStop: false,
         canGiveUp: false,
+        newYearResetNotice,
       } as MyChallengeRoomModel;
     }
 
@@ -291,6 +408,7 @@ export class WalletService implements OnModuleInit {
       ),
       canStop,
       canGiveUp,
+      newYearResetNotice,
     } as MyChallengeRoomModel;
   }
 
@@ -345,6 +463,7 @@ export class WalletService implements OnModuleInit {
     dayNumber: number,
   ): Promise<MyChallengeRoomModel> {
     const now = new Date();
+    await this.applyNewYearRolloverIfNeeded(userId);
 
     const active = await this.userSavingPlansRepo.findOne({
       where: { userId, isActive: true },
@@ -459,7 +578,7 @@ export class WalletService implements OnModuleInit {
   /**
    * Transfers challenge wallet → global, deactivates the plan.
    * - `completed`: records {@link CompletedChallenge} (successful stop / admin complete).
-   * - `give_up`: records {@link GiveUpChallenge} only; user may subscribe to the same duration again.
+   * - `give_up`: records {@link GiveUpChallenge} only.
    */
   private async finalizeActiveChallengeStop(
     userId: string,
@@ -553,6 +672,7 @@ export class WalletService implements OnModuleInit {
           const completed = completedRepo.create({
             userId,
             totalDays: active.totalDays,
+            challengeYear: currentMalaysiaYear(active.startAt),
           });
           await completedRepo.save(completed);
         } catch {
@@ -565,6 +685,7 @@ export class WalletService implements OnModuleInit {
               userId,
               userSavingPlanId: active.id,
               totalDays: active.totalDays,
+              challengeYear: currentMalaysiaYear(active.startAt),
               transferredCents,
             }),
           );

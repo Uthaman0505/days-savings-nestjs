@@ -8,9 +8,11 @@ import {
 } from 'typeorm';
 
 @Entity('completed_challenges')
-@Index('idx_completed_challenges_user_total_days', ['userId', 'totalDays'], {
-  unique: true,
-})
+@Index(
+  'idx_completed_challenges_user_total_days_year',
+  ['userId', 'totalDays', 'challengeYear'],
+  { unique: true },
+)
 export class CompletedChallenge {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -20,6 +22,9 @@ export class CompletedChallenge {
 
   @Column({ name: 'total_days', type: 'int' })
   totalDays: number;
+
+  @Column({ name: 'challenge_year', type: 'int', default: 1970 })
+  challengeYear: number;
 
   @CreateDateColumn({ name: 'completed_at', type: 'timestamptz' })
   completedAt: Date;
