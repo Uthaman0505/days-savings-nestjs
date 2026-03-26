@@ -313,23 +313,16 @@ export class WalletService {
     return this.getMyChallengeRoom(userId);
   }
 
-  async stopChallengeAndTransfer(
+  /**
+   * Transfers challenge wallet → global, deactivates the plan, records {@link CompletedChallenge}.
+   * Caller must load a valid active {@link UserSavingPlan} row.
+   */
+  private async finalizeActiveChallengeStop(
     userId: string,
-  ): Promise<MyChallengeRoomModel> {
-    const now = new Date();
-
-    const active = await this.userSavingPlansRepo.findOne({
-      where: { userId, isActive: true },
-      order: { endAt: 'DESC' },
-    });
-
-    if (!active) {
-      throw new BadRequestException('No active challenge to stop.');
-    }
-
-    if (active.endAt.getTime() > now.getTime()) {
-      throw new BadRequestException('Challenge is not finished yet.');
-    }
+    active: UserSavingPlan,
+    referenceType: 'STOP_CHALLENGE_TRANSFER' | 'ADMIN_FORCE_COMPLETE',
+  ): Promise<{ transferredCents: number }> {
+    let transferredCents = 0;
 
     await this.dailyClaimRepo.manager.transaction(async (manager) => {
       const globalWalletRepo = manager.getRepository(GlobalWallet);
@@ -349,7 +342,6 @@ export class WalletService {
         where: { userSavingPlanId: active.id },
       });
       if (!challengeWallet) {
-        // If the challenge wallet somehow doesn't exist, just transfer 0.
         challengeWallet = await challengeWalletRepo.save(
           challengeWalletRepo.create({
             userSavingPlanId: active.id,
@@ -358,52 +350,47 @@ export class WalletService {
         );
       }
 
-      const transferCents = challengeWallet.balanceCents ?? 0;
+      transferredCents = challengeWallet.balanceCents ?? 0;
 
-      if (transferCents > 0) {
+      if (transferredCents > 0) {
         const prevGlobal = globalWallet.balanceCents ?? 0;
 
-        // Update balances.
         challengeWallet.balanceCents = 0;
-        globalWallet.balanceCents = prevGlobal + transferCents;
+        globalWallet.balanceCents = prevGlobal + transferredCents;
 
         await challengeWalletRepo.save(challengeWallet);
         await globalWalletRepo.save(globalWallet);
 
-        // Debit challenge wallet
         await walletTxRepo.save(
           walletTxRepo.create({
             walletType: 'CHALLENGE' as WalletType,
             walletId: challengeWallet.id,
             userId,
             type: 'DEBIT' as WalletTransactionType,
-            amountCents: transferCents,
+            amountCents: transferredCents,
             balanceAfterCents: 0,
-            referenceType: 'STOP_CHALLENGE_TRANSFER',
+            referenceType,
             referenceId: active.id,
           }),
         );
 
-        // Credit global wallet
         await walletTxRepo.save(
           walletTxRepo.create({
             walletType: 'GLOBAL' as WalletType,
             walletId: globalWallet.id,
             userId,
             type: 'CREDIT' as WalletTransactionType,
-            amountCents: transferCents,
+            amountCents: transferredCents,
             balanceAfterCents: globalWallet.balanceCents,
-            referenceType: 'STOP_CHALLENGE_TRANSFER',
+            referenceType,
             referenceId: active.id,
           }),
         );
       }
 
-      // Close active challenge.
       active.isActive = false;
       await userSavingPlansRepo.save(active);
 
-      // Track completion forever (repeat blocking).
       try {
         const completed = completedRepo.create({
           userId,
@@ -415,6 +402,70 @@ export class WalletService {
       }
     });
 
+    return { transferredCents };
+  }
+
+  async stopChallengeAndTransfer(
+    userId: string,
+  ): Promise<MyChallengeRoomModel> {
+    const now = new Date();
+
+    const active = await this.userSavingPlansRepo.findOne({
+      where: { userId, isActive: true },
+      order: { endAt: 'DESC' },
+    });
+
+    if (!active) {
+      throw new BadRequestException('No active challenge to stop.');
+    }
+
+    if (active.endAt.getTime() > now.getTime()) {
+      throw new BadRequestException('Challenge is not finished yet.');
+    }
+
+    await this.finalizeActiveChallengeStop(
+      userId,
+      active,
+      'STOP_CHALLENGE_TRANSFER',
+    );
+
     return this.getMyChallengeRoom(userId);
+  }
+
+  /**
+   * ADMIN/testing: complete the user's active challenge immediately (no end-time check),
+   * same wallet + completion semantics as {@link stopChallengeAndTransfer}.
+   */
+  async adminCompleteUserActiveChallenge(userId: string): Promise<{
+    ok: boolean;
+    message: string;
+    userId: string;
+    totalDays: number;
+    transferredMyr: number;
+  }> {
+    const active = await this.userSavingPlansRepo.findOne({
+      where: { userId, isActive: true },
+      order: { endAt: 'DESC' },
+    });
+
+    if (!active) {
+      throw new BadRequestException('No active challenge for this user.');
+    }
+
+    const totalDays = active.totalDays;
+    const { transferredCents } = await this.finalizeActiveChallengeStop(
+      userId,
+      active,
+      'ADMIN_FORCE_COMPLETE',
+    );
+    const transferredMyr = Math.floor(transferredCents / 100);
+
+    return {
+      ok: true,
+      message: `Admin completed challenge: ${totalDays} days, transferred ${transferredMyr} MYR to global wallet.`,
+      userId,
+      totalDays,
+      transferredMyr,
+    };
   }
 }

@@ -207,6 +207,16 @@ export class PlansService implements OnModuleInit {
     };
   }
 
+  /** Total-day values the user has permanently completed (cannot re-subscribe). */
+  async findCompletedTotalDaysForUser(userId: string): Promise<number[]> {
+    const rows = await this.completedChallengesRepo.find({
+      where: { userId },
+      select: { totalDays: true },
+      order: { totalDays: 'ASC' },
+    });
+    return rows.map((r) => r.totalDays);
+  }
+
   async findActiveUserChallenge(userId: string): Promise<{
     id: string;
     totalDays: number;

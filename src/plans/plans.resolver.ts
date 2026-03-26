@@ -1,4 +1,4 @@
-import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { PlansService } from './plans.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { JwtUser } from '../auth/jwt.strategy';
@@ -35,5 +35,13 @@ export class PlansResolver {
   @Query(() => [SavingPlanModel], { name: 'plans' })
   plans(): Promise<SavingPlanModel[]> {
     return this.plansService.findActivePlans();
+  }
+
+  @Query(() => [Int], { name: 'myCompletedPlanTotalDays' })
+  @UseGuards(JwtAuthGuard)
+  myCompletedPlanTotalDays(
+    @CurrentUser() user: JwtUser,
+  ): Promise<number[]> {
+    return this.plansService.findCompletedTotalDaysForUser(user.id);
   }
 }

@@ -7,6 +7,7 @@ import { ClaimChallengeDayInput } from './dto/claim-challenge-day.input';
 import { MyChallengeRoomModel } from './models/my-challenge-room.model';
 import { WalletService } from './wallet.service';
 import { ResetUserChallengesPayloadModel } from './models/reset-user-challenges-payload.model';
+import { AdminCompleteChallengePayloadModel } from './models/admin-complete-challenge-payload.model';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 
@@ -48,5 +49,18 @@ export class WalletResolver {
     @Args('user_id') userId: string,
   ): Promise<ResetUserChallengesPayloadModel> {
     return this.walletService.resetUserChallenges(userId);
+  }
+
+  @Mutation(() => AdminCompleteChallengePayloadModel, {
+    name: 'adminCompleteUserActiveChallenge',
+    description:
+      'ADMIN only: force-complete the target user active challenge (transfer challenge wallet → global, mark plan completed). For testing.',
+  })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  adminCompleteUserActiveChallenge(
+    @Args('user_id') userId: string,
+  ): Promise<AdminCompleteChallengePayloadModel> {
+    return this.walletService.adminCompleteUserActiveChallenge(userId);
   }
 }
