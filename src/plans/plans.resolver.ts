@@ -39,9 +39,7 @@ export class PlansResolver {
 
   @Query(() => [Int], { name: 'myCompletedPlanTotalDays' })
   @UseGuards(JwtAuthGuard)
-  myCompletedPlanTotalDays(
-    @CurrentUser() user: JwtUser,
-  ): Promise<number[]> {
+  myCompletedPlanTotalDays(@CurrentUser() user: JwtUser): Promise<number[]> {
     return this.plansService.findCompletedTotalDaysForUser(user.id);
   }
 }
