@@ -5,6 +5,7 @@ import { ChallengeWallet } from './challenge-wallet.entity';
 import { WalletTransaction } from './wallet-transaction.entity';
 import { DailyChallengeClaim } from './daily-challenge-claim.entity';
 import { CompletedChallenge } from './completed-challenge.entity';
+import { GiveUpChallenge } from './give-up-challenge.entity';
 import { UserSavingPlan } from '../plans/user-saving-plan.entity';
 import { WalletResolver } from './wallet.resolver';
 import { WalletService } from './wallet.service';
@@ -18,6 +19,7 @@ import { RolesGuard } from '../auth/roles.guard';
       WalletTransaction,
       DailyChallengeClaim,
       CompletedChallenge,
+      GiveUpChallenge,
       UserSavingPlan,
     ]),
   ],

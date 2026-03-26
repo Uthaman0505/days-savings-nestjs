@@ -24,4 +24,7 @@ export class MyChallengeRoomModel {
 
   @Field(() => Boolean, { name: 'can_stop' })
   canStop: boolean;
+
+  @Field(() => Boolean, { name: 'can_give_up' })
+  canGiveUp: boolean;
 }

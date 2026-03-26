@@ -12,6 +12,7 @@ import { DailyChallengeClaim } from './daily-challenge-claim.entity';
 import { TodayClaimModel } from './models/today-claim.model';
 import { MyChallengeRoomModel } from './models/my-challenge-room.model';
 import { CompletedChallenge } from './completed-challenge.entity';
+import { GiveUpChallenge } from './give-up-challenge.entity';
 import { DailyChallengeClaim as DailyClaimRow } from './daily-challenge-claim.entity';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -85,8 +86,10 @@ export class WalletService {
       const walletTxRepo = manager.getRepository(WalletTransaction);
       const dailyClaimRepo = manager.getRepository(DailyChallengeClaim);
       const completedRepo = manager.getRepository(CompletedChallenge);
+      const giveUpRepo = manager.getRepository(GiveUpChallenge);
       const userSavingPlansRepo = manager.getRepository(UserSavingPlan);
 
+      await giveUpRepo.delete({ userId });
       // Wallet transactions are keyed by user_id.
       await walletTxRepo.delete({ userId });
 
@@ -165,6 +168,7 @@ export class WalletService {
         claimedDayNumbers: [],
         todayClaim: emptyToday,
         canStop: false,
+        canGiveUp: false,
       } as MyChallengeRoomModel;
     }
 
@@ -188,6 +192,7 @@ export class WalletService {
       .filter((n) => Number.isFinite(n));
 
     const canStop = active.endAt.getTime() <= now.getTime();
+    const canGiveUp = active.endAt.getTime() > now.getTime();
 
     return {
       activeChallenge: this.toActiveSavingPlanModel(active),
@@ -196,6 +201,7 @@ export class WalletService {
       claimedDayNumbers,
       todayClaim: this.toTodayClaimModel(todayClaimRow, now),
       canStop,
+      canGiveUp,
     } as MyChallengeRoomModel;
   }
 
@@ -314,21 +320,35 @@ export class WalletService {
   }
 
   /**
-   * Transfers challenge wallet → global, deactivates the plan, records {@link CompletedChallenge}.
-   * Caller must load a valid active {@link UserSavingPlan} row.
+   * Transfers challenge wallet → global, deactivates the plan.
+   * - `completed`: records {@link CompletedChallenge} (successful stop / admin complete).
+   * - `give_up`: records {@link GiveUpChallenge} only; user may subscribe to the same duration again.
    */
   private async finalizeActiveChallengeStop(
     userId: string,
     active: UserSavingPlan,
-    referenceType: 'STOP_CHALLENGE_TRANSFER' | 'ADMIN_FORCE_COMPLETE',
+    outcome:
+      | {
+          kind: 'completed';
+          walletReferenceType:
+            | 'STOP_CHALLENGE_TRANSFER'
+            | 'ADMIN_FORCE_COMPLETE';
+        }
+      | { kind: 'give_up' },
   ): Promise<{ transferredCents: number }> {
     let transferredCents = 0;
+
+    const walletReferenceType =
+      outcome.kind === 'give_up'
+        ? 'GIVE_UP_CHALLENGE'
+        : outcome.walletReferenceType;
 
     await this.dailyClaimRepo.manager.transaction(async (manager) => {
       const globalWalletRepo = manager.getRepository(GlobalWallet);
       const challengeWalletRepo = manager.getRepository(ChallengeWallet);
       const walletTxRepo = manager.getRepository(WalletTransaction);
       const completedRepo = manager.getRepository(CompletedChallenge);
+      const giveUpRepo = manager.getRepository(GiveUpChallenge);
       const userSavingPlansRepo = manager.getRepository(UserSavingPlan);
 
       let globalWallet = await globalWalletRepo.findOne({ where: { userId } });
@@ -369,7 +389,7 @@ export class WalletService {
             type: 'DEBIT' as WalletTransactionType,
             amountCents: transferredCents,
             balanceAfterCents: 0,
-            referenceType,
+            referenceType: walletReferenceType,
             referenceId: active.id,
           }),
         );
@@ -382,7 +402,7 @@ export class WalletService {
             type: 'CREDIT' as WalletTransactionType,
             amountCents: transferredCents,
             balanceAfterCents: globalWallet.balanceCents,
-            referenceType,
+            referenceType: walletReferenceType,
             referenceId: active.id,
           }),
         );
@@ -391,14 +411,25 @@ export class WalletService {
       active.isActive = false;
       await userSavingPlansRepo.save(active);
 
-      try {
-        const completed = completedRepo.create({
-          userId,
-          totalDays: active.totalDays,
-        });
-        await completedRepo.save(completed);
-      } catch {
-        // Ignore unique violations if called twice.
+      if (outcome.kind === 'completed') {
+        try {
+          const completed = completedRepo.create({
+            userId,
+            totalDays: active.totalDays,
+          });
+          await completedRepo.save(completed);
+        } catch {
+          // Ignore unique violations if called twice.
+        }
+      } else {
+        await giveUpRepo.save(
+          giveUpRepo.create({
+            userId,
+            userSavingPlanId: active.id,
+            totalDays: active.totalDays,
+            transferredCents,
+          }),
+        );
       }
     });
 
@@ -423,11 +454,33 @@ export class WalletService {
       throw new BadRequestException('Challenge is not finished yet.');
     }
 
-    await this.finalizeActiveChallengeStop(
-      userId,
-      active,
-      'STOP_CHALLENGE_TRANSFER',
-    );
+    await this.finalizeActiveChallengeStop(userId, active, {
+      kind: 'completed',
+      walletReferenceType: 'STOP_CHALLENGE_TRANSFER',
+    });
+
+    return this.getMyChallengeRoom(userId);
+  }
+
+  async giveUpActiveChallenge(userId: string): Promise<MyChallengeRoomModel> {
+    const now = new Date();
+
+    const active = await this.userSavingPlansRepo.findOne({
+      where: { userId, isActive: true },
+      order: { endAt: 'DESC' },
+    });
+
+    if (!active) {
+      throw new BadRequestException('No active challenge to give up.');
+    }
+
+    if (active.endAt.getTime() <= now.getTime()) {
+      throw new BadRequestException(
+        'Challenge time has ended. Use Stop to transfer to your Global wallet.',
+      );
+    }
+
+    await this.finalizeActiveChallengeStop(userId, active, { kind: 'give_up' });
 
     return this.getMyChallengeRoom(userId);
   }
@@ -456,7 +509,10 @@ export class WalletService {
     const { transferredCents } = await this.finalizeActiveChallengeStop(
       userId,
       active,
-      'ADMIN_FORCE_COMPLETE',
+      {
+        kind: 'completed',
+        walletReferenceType: 'ADMIN_FORCE_COMPLETE',
+      },
     );
     const transferredMyr = Math.floor(transferredCents / 100);
 

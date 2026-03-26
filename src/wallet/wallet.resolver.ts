@@ -40,6 +40,12 @@ export class WalletResolver {
     return this.walletService.stopChallengeAndTransfer(user.id);
   }
 
+  @Mutation(() => MyChallengeRoomModel, { name: 'giveUpChallenge' })
+  @UseGuards(JwtAuthGuard)
+  giveUpChallenge(@CurrentUser() user: JwtUser): Promise<MyChallengeRoomModel> {
+    return this.walletService.giveUpActiveChallenge(user.id);
+  }
+
   @Mutation(() => ResetUserChallengesPayloadModel, {
     name: 'resetUserChallenges',
   })
