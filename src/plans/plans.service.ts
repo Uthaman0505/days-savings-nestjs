@@ -11,6 +11,7 @@ import { UserSavingPlan } from './user-saving-plan.entity';
 import { GlobalWallet } from '../wallet/global-wallet.entity';
 import { ChallengeWallet } from '../wallet/challenge-wallet.entity';
 import { CompletedChallenge } from '../wallet/completed-challenge.entity';
+import { GiveUpChallenge } from '../wallet/give-up-challenge.entity';
 
 const DEFAULT_TOTAL_DAYS: number[] = Array.from(
   { length: 14 },
@@ -42,6 +43,8 @@ export class PlansService implements OnModuleInit {
     private readonly challengeWalletRepo: Repository<ChallengeWallet>,
     @InjectRepository(CompletedChallenge)
     private readonly completedChallengesRepo: Repository<CompletedChallenge>,
+    @InjectRepository(GiveUpChallenge)
+    private readonly giveUpChallengesRepo: Repository<GiveUpChallenge>,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -141,6 +144,16 @@ export class PlansService implements OnModuleInit {
       );
     }
 
+    const gaveUpSameDuration = await this.giveUpChallengesRepo.findOne({
+      where: { userId, totalDays },
+    });
+
+    if (gaveUpSameDuration) {
+      throw new BadRequestException(
+        'You previously gave up this challenge duration and cannot select it again. Please choose another duration.',
+      );
+    }
+
     const plan = await this.savingPlansRepo.findOne({
       where: { totalDays, isActive: true },
     });
@@ -207,14 +220,28 @@ export class PlansService implements OnModuleInit {
     };
   }
 
-  /** Total-day values the user has permanently completed (cannot re-subscribe). */
+  /**
+   * Total-day values the user can no longer subscribe to (completed or gave up).
+   */
   async findCompletedTotalDaysForUser(userId: string): Promise<number[]> {
-    const rows = await this.completedChallengesRepo.find({
-      where: { userId },
-      select: { totalDays: true },
-      order: { totalDays: 'ASC' },
-    });
-    return rows.map((r) => r.totalDays);
+    const [completedRows, gaveUpRows] = await Promise.all([
+      this.completedChallengesRepo.find({
+        where: { userId },
+        select: { totalDays: true },
+      }),
+      this.giveUpChallengesRepo.find({
+        where: { userId },
+        select: { totalDays: true },
+      }),
+    ]);
+    const merged = new Set<number>();
+    for (const r of completedRows) {
+      merged.add(r.totalDays);
+    }
+    for (const r of gaveUpRows) {
+      merged.add(r.totalDays);
+    }
+    return Array.from(merged).sort((a, b) => a - b);
   }
 
   async findActiveUserChallenge(userId: string): Promise<{

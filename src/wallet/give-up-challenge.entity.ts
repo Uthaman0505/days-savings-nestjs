@@ -8,6 +8,9 @@ import {
 
 @Entity('give_up_challenges')
 @Index('idx_give_up_challenges_user_id', ['userId'])
+@Index('idx_give_up_challenges_user_total_days', ['userId', 'totalDays'], {
+  unique: true,
+})
 export class GiveUpChallenge {
   @PrimaryGeneratedColumn('uuid')
   id: string;

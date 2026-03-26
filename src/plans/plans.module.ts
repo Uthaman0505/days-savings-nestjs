@@ -7,6 +7,7 @@ import { UserSavingPlan } from './user-saving-plan.entity';
 import { GlobalWallet } from '../wallet/global-wallet.entity';
 import { ChallengeWallet } from '../wallet/challenge-wallet.entity';
 import { CompletedChallenge } from '../wallet/completed-challenge.entity';
+import { GiveUpChallenge } from '../wallet/give-up-challenge.entity';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { CompletedChallenge } from '../wallet/completed-challenge.entity';
       GlobalWallet,
       ChallengeWallet,
       CompletedChallenge,
+      GiveUpChallenge,
     ]),
   ],
   providers: [PlansService, PlansResolver],

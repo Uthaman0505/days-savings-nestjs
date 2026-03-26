@@ -422,14 +422,18 @@ export class WalletService {
           // Ignore unique violations if called twice.
         }
       } else {
-        await giveUpRepo.save(
-          giveUpRepo.create({
-            userId,
-            userSavingPlanId: active.id,
-            totalDays: active.totalDays,
-            transferredCents,
-          }),
-        );
+        try {
+          await giveUpRepo.save(
+            giveUpRepo.create({
+              userId,
+              userSavingPlanId: active.id,
+              totalDays: active.totalDays,
+              transferredCents,
+            }),
+          );
+        } catch {
+          // Ignore unique violations if called twice.
+        }
       }
     });
 
