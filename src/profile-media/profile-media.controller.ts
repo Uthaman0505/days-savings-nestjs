@@ -18,7 +18,9 @@ export class ProfileMediaController {
 
   @Post('avatar')
   @UseGuards(JwtAuthGuard)
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }),
+  )
   uploadAvatar(
     @Req() req: Request & { user: JwtUser },
     @UploadedFile()

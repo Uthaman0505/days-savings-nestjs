@@ -5,7 +5,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
 import { UserService } from '../user/user.service';
 
@@ -34,7 +38,10 @@ export class ProfileMediaService {
     const accessKeyId = this.mustGet('STORAGE_ACCESS_KEY');
     const secretAccessKey = this.mustGet('STORAGE_SECRET_KEY');
     this.bucket = this.mustGet('STORAGE_BUCKET');
-    this.publicBaseUrl = this.mustGet('STORAGE_PUBLIC_BASE_URL').replace(/\/+$/, '');
+    this.publicBaseUrl = this.mustGet('STORAGE_PUBLIC_BASE_URL').replace(
+      /\/+$/,
+      '',
+    );
     const forcePathStyle =
       (this.configService.get<string>('STORAGE_FORCE_PATH_STYLE') ?? 'true') ===
       'true';
@@ -47,7 +54,10 @@ export class ProfileMediaService {
     });
   }
 
-  async uploadProfileAvatar(userId: string, file: UploadAvatarFile): Promise<{
+  async uploadProfileAvatar(
+    userId: string,
+    file: UploadAvatarFile,
+  ): Promise<{
     id: string;
     email: string;
     displayName: string | null;
