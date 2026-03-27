@@ -9,6 +9,7 @@ import { DatabaseModule } from './database/database.module';
 import { PlansModule } from './plans/plans.module';
 import { UserModule } from './user/user.module';
 import { WalletModule } from './wallet/wallet.module';
+import { ProfileMediaModule } from './profile-media/profile-media.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { WalletModule } from './wallet/wallet.module';
     PlansModule,
     WalletModule,
     UserModule,
+    ProfileMediaModule,
   ],
   providers: [AppService, AppResolver],
 })

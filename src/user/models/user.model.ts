@@ -11,6 +11,9 @@ export class UserModel {
   @Field(() => String, { nullable: true })
   displayName: string | null;
 
+  @Field(() => String, { nullable: true })
+  avatarUrl: string | null;
+
   @Field(() => Date)
   createdAt: Date;
 }

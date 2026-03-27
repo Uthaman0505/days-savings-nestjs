@@ -20,6 +20,12 @@ export class User {
   @Column({ name: 'display_name', type: 'varchar', nullable: true })
   displayName: string | null;
 
+  @Column({ name: 'avatar_url', type: 'varchar', nullable: true })
+  avatarUrl: string | null;
+
+  @Column({ name: 'avatar_key', type: 'varchar', nullable: true })
+  avatarKey: string | null;
+
   @Column({
     type: 'jsonb',
     nullable: false,

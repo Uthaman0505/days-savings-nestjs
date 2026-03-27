@@ -31,6 +31,9 @@ describe('UserService', () => {
       email: 'a@b.com',
       passwordHash: 'h',
       displayName: null,
+      avatarUrl: null,
+      avatarKey: null,
+      roles: { roles: ['USER'] },
       createdAt: new Date(),
       updatedAt: new Date(),
     };

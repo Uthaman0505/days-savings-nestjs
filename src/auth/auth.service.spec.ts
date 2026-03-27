@@ -77,6 +77,9 @@ describe('AuthService', () => {
         email: 'a@b.com',
         passwordHash: 'hash',
         displayName: null,
+        avatarUrl: null,
+        avatarKey: null,
+        roles: { roles: ['USER'] },
         createdAt: new Date(),
         updatedAt: new Date(),
       };
