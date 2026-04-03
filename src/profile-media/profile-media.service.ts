@@ -8,11 +8,16 @@ import {
 import { ConfigService } from '@nestjs/config';
 import {
   DeleteObjectCommand,
+  GetObjectCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
+import type { Response } from 'express';
 import { randomUUID } from 'crypto';
+import { Readable } from 'stream';
+import { pipeline } from 'stream/promises';
 import { UserService } from '../user/user.service';
+import { resolveClientAvatarUrl } from './client-avatar-url';
 
 const MAX_AVATAR_BYTES = 10 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -30,6 +35,7 @@ export class ProfileMediaService {
   private readonly s3: S3Client;
   private readonly bucket: string;
   private readonly publicBaseUrl: string;
+  private readonly publicAppUrl: string | undefined;
 
   constructor(
     private readonly configService: ConfigService,
@@ -44,6 +50,7 @@ export class ProfileMediaService {
       /\/+$/,
       '',
     );
+    this.publicAppUrl = this.configService.get<string>('PUBLIC_APP_URL')?.trim();
     const forcePathStyle =
       (this.configService.get<string>('STORAGE_FORCE_PATH_STYLE') ?? 'true') ===
       'true';
@@ -109,10 +116,10 @@ export class ProfileMediaService {
       );
     }
 
-    const avatarUrl = `${this.publicBaseUrl}/${key}`;
+    const directObjectUrl = `${this.publicBaseUrl}/${key}`;
     const previousKey = user.avatarKey;
     const updated = await this.userService.updateAvatar(userId, {
-      avatarUrl,
+      avatarUrl: directObjectUrl,
       avatarKey: key,
     });
     if (!updated) {
@@ -133,13 +140,62 @@ export class ProfileMediaService {
       }
     }
 
+    const avatarUrl = resolveClientAvatarUrl(updated, this.publicAppUrl);
+
     return {
       id: updated.id,
       email: updated.email,
       displayName: updated.displayName,
-      avatarUrl: updated.avatarUrl,
+      avatarUrl,
       createdAt: updated.createdAt,
     };
+  }
+
+  /**
+   * Stream the authenticated user's avatar from object storage (for private buckets).
+   */
+  async streamAvatarToResponse(userId: string, res: Response): Promise<void> {
+    const user = await this.userService.findById(userId);
+    if (!user?.avatarKey) {
+      res.status(404).send('No avatar');
+      return;
+    }
+
+    let out;
+    try {
+      out = await this.s3.send(
+        new GetObjectCommand({
+          Bucket: this.bucket,
+          Key: user.avatarKey,
+        }),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`S3 GetObject failed: ${msg}`);
+      res.status(404).send('Avatar not found');
+      return;
+    }
+
+    const body = out.Body;
+    if (!body) {
+      res.status(404).send('Avatar not found');
+      return;
+    }
+
+    const ct = out.ContentType ?? 'application/octet-stream';
+    res.setHeader('Content-Type', ct);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+
+    const stream = body as Readable;
+    try {
+      await pipeline(stream, res);
+    } catch (err) {
+      if (!res.headersSent) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`Avatar stream failed: ${msg}`);
+        res.status(500).end();
+      }
+    }
   }
 
   private mustGet(name: string): string {

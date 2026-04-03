@@ -17,6 +17,7 @@ import { RegisterInput } from './dto/register.input';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { AuthPayloadModel } from './models/auth-payload.model';
 import { UserModel } from '../user/models/user.model';
+import { resolveClientAvatarUrl } from '../profile-media/client-avatar-url';
 
 @Injectable()
 export class AuthService {
@@ -164,7 +165,10 @@ export class AuthService {
       id: user.id,
       email: user.email,
       displayName: user.displayName,
-      avatarUrl: user.avatarUrl,
+      avatarUrl: resolveClientAvatarUrl(
+        user,
+        this.configService.get<string>('PUBLIC_APP_URL'),
+      ),
       createdAt: user.createdAt,
     };
   }
