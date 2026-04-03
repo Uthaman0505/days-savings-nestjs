@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -25,6 +26,7 @@ type UploadAvatarFile = {
 
 @Injectable()
 export class ProfileMediaService {
+  private readonly logger = new Logger(ProfileMediaService.name);
   private readonly s3: S3Client;
   private readonly bucket: string;
   private readonly publicBaseUrl: string;
@@ -85,17 +87,26 @@ export class ProfileMediaService {
     const key = `profiles/${userId}/${Date.now()}-${randomUUID()}.${ext}`;
 
     try {
+      // Many S3-compatible providers disable ACLs; PutObject with ACL then fails.
+      // Set STORAGE_PUT_OBJECT_ACL=public-read only if your bucket supports object ACLs.
+      const acl = this.configService.get<string>('STORAGE_PUT_OBJECT_ACL');
       await this.s3.send(
         new PutObjectCommand({
           Bucket: this.bucket,
           Key: key,
           Body: file.buffer,
           ContentType: file.mimetype,
-          ACL: 'public-read',
+          ...(acl ? { ACL: acl as 'public-read' } : {}),
         }),
       );
-    } catch {
-      throw new InternalServerErrorException('Failed to upload avatar image.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`S3 PutObject failed: ${msg}`);
+      throw new InternalServerErrorException(
+        process.env.NODE_ENV === 'development'
+          ? `Failed to upload avatar image: ${msg}`
+          : 'Failed to upload avatar image.',
+      );
     }
 
     const avatarUrl = `${this.publicBaseUrl}/${key}`;
