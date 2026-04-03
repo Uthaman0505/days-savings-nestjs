@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  type GetObjectCommandOutput,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -163,7 +164,7 @@ export class ProfileMediaService {
       return;
     }
 
-    let out;
+    let out: GetObjectCommandOutput;
     try {
       out = await this.s3.send(
         new GetObjectCommand({
