@@ -50,7 +50,9 @@ export class ProfileMediaService {
       /\/+$/,
       '',
     );
-    this.publicAppUrl = this.configService.get<string>('PUBLIC_APP_URL')?.trim();
+    this.publicAppUrl = this.configService
+      .get<string>('PUBLIC_APP_URL')
+      ?.trim();
     const forcePathStyle =
       (this.configService.get<string>('STORAGE_FORCE_PATH_STYLE') ?? 'true') ===
       'true';
