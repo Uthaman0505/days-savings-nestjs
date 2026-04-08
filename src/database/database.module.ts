@@ -11,7 +11,8 @@ import { entities } from '../entities/entities';
       useFactory: (configService: ConfigService) => {
         const nodeEnv = configService.get<string>('NODE_ENV');
         const isProduction = nodeEnv === 'production';
-        const typeormSync = configService.get<string>('TYPEORM_SYNC') === 'true';
+        const typeormSync =
+          configService.get<string>('TYPEORM_SYNC') === 'true';
 
         return {
           type: 'postgres' as const,

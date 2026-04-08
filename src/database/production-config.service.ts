@@ -10,7 +10,8 @@ export class ProductionConfigService implements TypeOrmOptionsFactory {
   constructor(private readonly configService: ConfigService) {}
 
   createTypeOrmOptions(): TypeOrmModuleOptions | Promise<TypeOrmModuleOptions> {
-    const typeormSync = this.configService.get<string>('TYPEORM_SYNC') === 'true';
+    const typeormSync =
+      this.configService.get<string>('TYPEORM_SYNC') === 'true';
 
     return {
       type: 'postgres',
