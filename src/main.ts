@@ -16,9 +16,10 @@ async function bootstrap() {
       transform: true,
     }),
   );
-  const PORT = process.env.APP_PORT || (process.env.PORT as string);
-  await app.listen(PORT, '0.0.0.0', () => {
-    console.log(`${`Your app runs on http://localhost:${PORT}/graphql`}`);
+  // Railway (and similar) set PORT; prefer it over APP_PORT so the proxy matches the listen port.
+  const port = process.env.PORT ?? process.env.APP_PORT ?? '5000';
+  await app.listen(port, '0.0.0.0', () => {
+    console.log(`Your app runs on http://localhost:${port}/graphql`);
   });
 }
 
