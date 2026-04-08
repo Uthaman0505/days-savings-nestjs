@@ -22,7 +22,7 @@ import { ProfileMediaModule } from './profile-media/profile-media.module';
       driver: ApolloDriver,
       autoSchemaFile: true,
       context: ({ req }: { req: unknown }) => ({ req }),
-      playground: process.env.NODE_ENV === 'production' ? true : true,
+      playground: process.env.NODE_ENV === 'production' ? false : true,
       // Default CSRF rules reject many GET /graphql requests; disable for public API + browser sandbox.
       csrfPrevention: false,
     }),
