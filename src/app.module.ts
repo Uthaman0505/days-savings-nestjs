@@ -23,6 +23,8 @@ import { ProfileMediaModule } from './profile-media/profile-media.module';
       autoSchemaFile: true,
       context: ({ req }: { req: unknown }) => ({ req }),
       playground: process.env.NODE_ENV === 'production' ? true : true,
+      // Default CSRF rules reject many GET /graphql requests; disable for public API + browser sandbox.
+      csrfPrevention: false,
     }),
     AuthModule,
     PlansModule,
