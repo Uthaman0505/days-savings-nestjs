@@ -1,13 +1,28 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { DevelopmentConfigService } from './development-config.service';
+import { entities } from '../entities/entities';
 
 @Module({
   imports: [
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
-      useClass: DevelopmentConfigService,
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => {
+        const nodeEnv = configService.get<string>('NODE_ENV');
+        const isProduction = nodeEnv === 'production';
+        const typeormSync = configService.get<string>('TYPEORM_SYNC') === 'true';
+
+        return {
+          type: 'postgres' as const,
+          url: isProduction
+            ? configService.get<string>('DB_PRODUCTION_URL')
+            : configService.get<string>('DB_DEVELOPMENT_URL'),
+          entities: [...entities],
+          logging: !isProduction,
+          synchronize: typeormSync,
+        };
+      },
     }),
   ],
 })
