@@ -1,7 +1,11 @@
+# Branch model: `development` = integration/dev, `master` = production.
 name: CI
 
 on:
   pull_request:
+    branches:
+      - master
+      - development
   push:
     branches:
       - master
