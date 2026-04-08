@@ -22,6 +22,7 @@ import { ProfileMediaModule } from './profile-media/profile-media.module';
       driver: ApolloDriver,
       autoSchemaFile: true,
       context: ({ req }: { req: unknown }) => ({ req }),
+      playground: process.env.NODE_ENV === 'production' ? true : true,
     }),
     AuthModule,
     PlansModule,
