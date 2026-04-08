@@ -22,7 +22,6 @@
     WORKDIR /app
     
     ENV NODE_ENV=production
-    ENV APP_PORT=5000
     
     COPY package.json yarn.lock ./
     
