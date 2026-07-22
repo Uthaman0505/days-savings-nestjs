@@ -10,6 +10,9 @@ import { CompletedChallenge } from '../wallet/completed-challenge.entity';
 import { GiveUpChallenge } from '../wallet/give-up-challenge.entity';
 import { DailyTransactionLeverage } from '../wallet/daily-transaction-leverage.entity';
 import { YearlyChallengeReset } from '../wallet/yearly-challenge-reset.entity';
+import { GrabProfitEntry } from '../grab-profit/grab-profit-entry.entity';
+import { Account } from '../account/account.entity';
+import { Category } from '../category/category.entity';
 
 export const entities = [
   User,
@@ -24,4 +27,7 @@ export const entities = [
   GiveUpChallenge,
   DailyTransactionLeverage,
   YearlyChallengeReset,
+  GrabProfitEntry,
+  Account,
+  Category,
 ];

@@ -10,6 +10,9 @@ import { PlansModule } from './plans/plans.module';
 import { UserModule } from './user/user.module';
 import { WalletModule } from './wallet/wallet.module';
 import { ProfileMediaModule } from './profile-media/profile-media.module';
+import { GrabProfitModule } from './grab-profit/grab-profit.module';
+import { AccountModule } from './account/account.module';
+import { CategoryModule } from './category/category.module';
 
 @Module({
   imports: [
@@ -31,6 +34,9 @@ import { ProfileMediaModule } from './profile-media/profile-media.module';
     WalletModule,
     UserModule,
     ProfileMediaModule,
+    GrabProfitModule,
+    AccountModule,
+    CategoryModule,
   ],
   providers: [AppService, AppResolver],
 })
