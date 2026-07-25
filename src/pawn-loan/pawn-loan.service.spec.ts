@@ -16,7 +16,10 @@ import { PawnTransaction } from './pawn-transaction.entity';
 describe('PawnLoanService', () => {
   let service: PawnLoanService;
   let loansRepo: jest.Mocked<
-    Pick<Repository<PawnLoan>, 'find' | 'findOne' | 'create' | 'save' | 'softRemove'>
+    Pick<
+      Repository<PawnLoan>,
+      'find' | 'findOne' | 'create' | 'save' | 'softRemove'
+    >
   > & { manager: { transaction: jest.Mock } };
   let collateralsRepo: jest.Mocked<
     Pick<Repository<PawnCollateral>, 'find' | 'findOne' | 'create' | 'save'>

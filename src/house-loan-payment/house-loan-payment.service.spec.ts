@@ -59,9 +59,7 @@ describe('HouseLoanPaymentService', () => {
 
   beforeEach(async () => {
     const managerPaymentRepo = {
-      create: jest.fn(
-        (x: Partial<HouseLoanPayment>) => x as HouseLoanPayment,
-      ),
+      create: jest.fn((x: Partial<HouseLoanPayment>) => x as HouseLoanPayment),
       save: jest.fn(async (x: HouseLoanPayment) => ({
         ...x,
         id: x.id ?? 'hlp-1',
@@ -94,11 +92,12 @@ describe('HouseLoanPaymentService', () => {
     )._managerPaymentRepo = managerPaymentRepo;
 
     accountsRepo = {
-      findOne: jest.fn(async () =>
-        ({
-          id: 'acc-1',
-          currentBalanceCents: 500000,
-        }) as Account,
+      findOne: jest.fn(
+        async () =>
+          ({
+            id: 'acc-1',
+            currentBalanceCents: 500000,
+          }) as Account,
       ),
     };
 

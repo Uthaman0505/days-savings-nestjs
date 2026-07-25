@@ -270,9 +270,7 @@ export class TransactionService {
       }
       if (input.description !== undefined) {
         row.description =
-          input.description === null
-            ? null
-            : input.description.trim() || null;
+          input.description === null ? null : input.description.trim() || null;
       }
       if (input.reference_number !== undefined) {
         row.referenceNumber =

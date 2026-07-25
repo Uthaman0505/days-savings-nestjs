@@ -63,9 +63,7 @@ describe('InsurancePaymentService', () => {
 
   beforeEach(async () => {
     const managerPaymentRepo = {
-      create: jest.fn(
-        (x: Partial<InsurancePayment>) => x as InsurancePayment,
-      ),
+      create: jest.fn((x: Partial<InsurancePayment>) => x as InsurancePayment),
       save: jest.fn(async (x: InsurancePayment) => ({
         ...x,
         id: x.id ?? 'ip-1',
@@ -98,11 +96,12 @@ describe('InsurancePaymentService', () => {
     )._managerPaymentRepo = managerPaymentRepo;
 
     accountsRepo = {
-      findOne: jest.fn(async () =>
-        ({
-          id: 'acc-1',
-          currentBalanceCents: 100000,
-        }) as Account,
+      findOne: jest.fn(
+        async () =>
+          ({
+            id: 'acc-1',
+            currentBalanceCents: 100000,
+          }) as Account,
       ),
     };
 

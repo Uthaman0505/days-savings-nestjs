@@ -16,9 +16,7 @@ export class InsuranceResolver {
 
   @Query(() => [InsuranceModel], { name: 'myInsurancePolicies' })
   @UseGuards(JwtAuthGuard)
-  myInsurancePolicies(
-    @CurrentUser() user: JwtUser,
-  ): Promise<InsuranceModel[]> {
+  myInsurancePolicies(@CurrentUser() user: JwtUser): Promise<InsuranceModel[]> {
     return this.insuranceService.findMyPolicies(user.id);
   }
 

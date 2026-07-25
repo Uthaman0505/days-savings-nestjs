@@ -1,4 +1,10 @@
-import { Field, GraphQLISODateTime, ID, Int, ObjectType } from '@nestjs/graphql';
+import {
+  Field,
+  GraphQLISODateTime,
+  ID,
+  Int,
+  ObjectType,
+} from '@nestjs/graphql';
 
 @ObjectType('RecurringTransaction')
 export class RecurringTransactionModel {

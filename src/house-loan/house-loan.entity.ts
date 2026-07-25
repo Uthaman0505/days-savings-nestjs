@@ -13,9 +13,13 @@ import { User } from '../user/user.entity';
 @Entity('house_loans')
 @Index('idx_house_loans_user_id', ['userId'])
 @Index('idx_house_loans_is_active', ['isActive'])
-@Index('uq_house_loans_user_loan_account_number', ['userId', 'loanAccountNumber'], {
-  unique: true,
-})
+@Index(
+  'uq_house_loans_user_loan_account_number',
+  ['userId', 'loanAccountNumber'],
+  {
+    unique: true,
+  },
+)
 export class HouseLoan {
   @PrimaryGeneratedColumn('uuid')
   id: string;

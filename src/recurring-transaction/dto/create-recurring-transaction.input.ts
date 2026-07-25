@@ -124,12 +124,20 @@ export class CreateRecurringTransactionInput {
   @MaxLength(64)
   timezone?: string;
 
-  @Field(() => Boolean, { name: 'auto_execute', nullable: true, defaultValue: true })
+  @Field(() => Boolean, {
+    name: 'auto_execute',
+    nullable: true,
+    defaultValue: true,
+  })
   @IsOptional()
   @IsBoolean()
   auto_execute?: boolean;
 
-  @Field(() => Int, { name: 'max_retry_count', nullable: true, defaultValue: 3 })
+  @Field(() => Int, {
+    name: 'max_retry_count',
+    nullable: true,
+    defaultValue: 3,
+  })
   @IsOptional()
   @IsInt()
   @Min(0)
@@ -137,13 +145,17 @@ export class CreateRecurringTransactionInput {
 
   /** TRANSFER destination account. */
   @Field(() => ID, { name: 'to_account_id', nullable: true })
-  @ValidateIf((o: CreateRecurringTransactionInput) => o.target_module === 'TRANSFER')
+  @ValidateIf(
+    (o: CreateRecurringTransactionInput) => o.target_module === 'TRANSFER',
+  )
   @IsUUID()
   to_account_id?: string;
 
   /** INCOME source enum value (e.g. SALARY). */
   @Field(() => String, { name: 'income_source', nullable: true })
-  @ValidateIf((o: CreateRecurringTransactionInput) => o.target_module === 'INCOME')
+  @ValidateIf(
+    (o: CreateRecurringTransactionInput) => o.target_module === 'INCOME',
+  )
   @IsString()
   income_source?: string;
 

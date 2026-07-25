@@ -58,10 +58,7 @@ export class FamilyLoanService {
     return rows.map((row) => this.toModel(row));
   }
 
-  async findByType(
-    userId: string,
-    type: string,
-  ): Promise<FamilyLoanModel[]> {
+  async findByType(userId: string, type: string): Promise<FamilyLoanModel[]> {
     const loanType = this.requireLoanType(type);
     const rows = await this.familyLoansRepo.find({
       where: { userId, loanType },
@@ -84,10 +81,7 @@ export class FamilyLoanService {
   ): Promise<FamilyLoanModel> {
     const loanType = this.requireLoanType(input.loan_type);
     const personName = this.normalizeName(input.person_name, 'Person name');
-    const relationship = this.normalizeName(
-      input.relationship,
-      'Relationship',
-    );
+    const relationship = this.normalizeName(input.relationship, 'Relationship');
     const principalAmountCents = this.requirePositiveCents(
       input.principal_amount_cents,
       'Principal amount',
@@ -209,10 +203,7 @@ export class FamilyLoanService {
       input.expected_end_date !== undefined
         ? input.expected_end_date === null
           ? null
-          : this.requireDateString(
-              input.expected_end_date,
-              'Expected end date',
-            )
+          : this.requireDateString(input.expected_end_date, 'Expected end date')
         : loan.expectedEndDate;
     if (nextEnd) {
       this.assertDateOnOrAfter(
@@ -304,7 +295,9 @@ export class FamilyLoanService {
     manager?: EntityManager,
   ): Promise<FamilyLoanModel> {
     if (!Number.isInteger(amountCents) || amountCents <= 0) {
-      throw new BadRequestException('Repayment amount must be greater than zero.');
+      throw new BadRequestException(
+        'Repayment amount must be greater than zero.',
+      );
     }
 
     const run = async (mgr: EntityManager) => {
@@ -347,7 +340,9 @@ export class FamilyLoanService {
     manager?: EntityManager,
   ): Promise<FamilyLoanModel> {
     if (!Number.isInteger(amountCents) || amountCents <= 0) {
-      throw new BadRequestException('Repayment amount must be greater than zero.');
+      throw new BadRequestException(
+        'Repayment amount must be greater than zero.',
+      );
     }
 
     const run = async (mgr: EntityManager) => {
@@ -450,7 +445,10 @@ export class FamilyLoanService {
     userId: string,
     accountId: string,
   ): Promise<void> {
-    const account = await this.accountService.findByIdForUser(userId, accountId);
+    const account = await this.accountService.findByIdForUser(
+      userId,
+      accountId,
+    );
     if (account.isArchived) {
       throw new BadRequestException(
         'Archived accounts cannot be used for family loans.',
@@ -495,7 +493,9 @@ export class FamilyLoanService {
   }
 
   private requireLoanType(type: string): FamilyLoanType {
-    if (!FAMILY_LOAN_TYPES.includes(type as (typeof FAMILY_LOAN_TYPES)[number])) {
+    if (
+      !FAMILY_LOAN_TYPES.includes(type as (typeof FAMILY_LOAN_TYPES)[number])
+    ) {
       throw new BadRequestException('Invalid family loan type.');
     }
     return type as FamilyLoanType;

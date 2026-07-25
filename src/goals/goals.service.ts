@@ -35,12 +35,7 @@ import {
   GoalContribution,
   GoalContributionSource,
 } from './goal-contribution.entity';
-import {
-  Goal,
-  GoalPriority,
-  GoalStatus,
-  GoalType,
-} from './goals.entity';
+import { Goal, GoalPriority, GoalStatus, GoalType } from './goals.entity';
 import { GoalContributionModel } from './models/goal-contribution.model';
 import { GoalModel } from './models/goal.model';
 
@@ -192,10 +187,7 @@ export class GoalsService {
         : goal.name;
     const nextTarget =
       input.target_amount_cents !== undefined
-        ? this.requirePositiveCents(
-            input.target_amount_cents,
-            'Target amount',
-          )
+        ? this.requirePositiveCents(input.target_amount_cents, 'Target amount')
         : goal.targetAmountCents;
     const nextCurrent =
       input.current_amount_cents !== undefined
@@ -230,9 +222,7 @@ export class GoalsService {
     }
     if (input.description !== undefined) {
       goal.description =
-        input.description === null
-          ? null
-          : input.description.trim() || null;
+        input.description === null ? null : input.description.trim() || null;
     }
     if (input.goal_type !== undefined) {
       goal.goalType = this.requireGoalType(input.goal_type);
@@ -595,7 +585,10 @@ export class GoalsService {
     userId: string,
     accountId: string,
   ): Promise<void> {
-    const account = await this.accountService.findByIdForUser(userId, accountId);
+    const account = await this.accountService.findByIdForUser(
+      userId,
+      accountId,
+    );
     if (account.isArchived) {
       throw new BadRequestException(
         'Archived accounts cannot be used for goal transfers.',

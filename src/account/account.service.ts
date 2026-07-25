@@ -26,12 +26,18 @@ export class AccountService {
     return rows.map((row) => this.toModel(row));
   }
 
-  async findByIdForUser(userId: string, accountId: string): Promise<AccountModel> {
+  async findByIdForUser(
+    userId: string,
+    accountId: string,
+  ): Promise<AccountModel> {
     const row = await this.requireOwnedAccount(userId, accountId);
     return this.toModel(row);
   }
 
-  async create(userId: string, input: CreateAccountInput): Promise<AccountModel> {
+  async create(
+    userId: string,
+    input: CreateAccountInput,
+  ): Promise<AccountModel> {
     const accountName = this.normalizeName(input.account_name);
     await this.assertUniqueName(userId, accountName);
 
@@ -96,8 +102,7 @@ export class AccountService {
       account.currencyCode = input.currency_code.toUpperCase();
     }
     if (input.color !== undefined) {
-      account.color =
-        input.color === null ? null : input.color.trim() || null;
+      account.color = input.color === null ? null : input.color.trim() || null;
     }
     if (input.icon !== undefined) {
       account.icon = input.icon === null ? null : input.icon.trim() || null;
@@ -108,7 +113,9 @@ export class AccountService {
 
     if (input.is_default === true) {
       if (account.isArchived) {
-        throw new BadRequestException('Archived accounts cannot become default.');
+        throw new BadRequestException(
+          'Archived accounts cannot become default.',
+        );
       }
       await this.clearDefaultFlags(userId);
       account.isDefault = true;
@@ -149,7 +156,9 @@ export class AccountService {
     userId: string,
     accountId: string,
   ): Promise<Account> {
-    const account = await this.accountsRepo.findOne({ where: { id: accountId } });
+    const account = await this.accountsRepo.findOne({
+      where: { id: accountId },
+    });
     if (!account) {
       throw new NotFoundException('Account not found.');
     }

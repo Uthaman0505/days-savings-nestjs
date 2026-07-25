@@ -1,4 +1,4 @@
-import { Field, Float, ID, InputType, Int } from '@nestjs/graphql';
+import { Field, Float, InputType, Int } from '@nestjs/graphql';
 import {
   IsArray,
   IsDateString,
@@ -7,7 +7,6 @@ import {
   IsNumber,
   IsOptional,
   IsString,
-  IsUUID,
   Length,
   Matches,
   MaxLength,
@@ -84,7 +83,11 @@ export class CreatePawnLoanInput {
   @Min(1)
   principal_amount_cents: number;
 
-  @Field(() => Float, { name: 'interest_rate', nullable: true, defaultValue: 0 })
+  @Field(() => Float, {
+    name: 'interest_rate',
+    nullable: true,
+    defaultValue: 0,
+  })
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 4 })
   @Min(0)

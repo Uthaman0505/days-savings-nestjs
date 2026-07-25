@@ -1,4 +1,4 @@
-import { Field, ID, InputType, Int } from '@nestjs/graphql';
+import { Field, InputType, Int } from '@nestjs/graphql';
 import {
   IsDateString,
   IsIn,
@@ -31,7 +31,7 @@ export class CreateGoalInput {
   @Field(() => String)
   @IsString()
   @Length(1, 120)
-  name: string;
+  name!: string;
 
   @Field(() => String, { nullable: true })
   @IsOptional()
@@ -41,12 +41,12 @@ export class CreateGoalInput {
   @Field(() => String, { name: 'goal_type' })
   @IsString()
   @IsIn([...GOAL_TYPES])
-  goal_type: string;
+  goal_type!: string;
 
   @Field(() => Int, { name: 'target_amount_cents' })
   @IsInt()
   @Min(1)
-  target_amount_cents: number;
+  target_amount_cents!: number;
 
   @Field(() => Int, {
     name: 'current_amount_cents',
@@ -78,9 +78,9 @@ export class CreateGoalInput {
 
   @Field(() => String, { name: 'start_date' })
   @IsDateString()
-  start_date: string;
+  start_date!: string;
 
   @Field(() => String, { name: 'target_date' })
   @IsDateString()
-  target_date: string;
+  target_date!: string;
 }

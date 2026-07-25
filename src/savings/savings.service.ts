@@ -86,10 +86,7 @@ export class SavingsService {
     );
     const targetAmountCents =
       input.target_amount_cents !== undefined
-        ? this.requirePositiveCents(
-            input.target_amount_cents,
-            'Target amount',
-          )
+        ? this.requirePositiveCents(input.target_amount_cents, 'Target amount')
         : null;
     this.assertTargetCoversBalance(targetAmountCents, currentBalanceCents);
 
@@ -196,9 +193,7 @@ export class SavingsService {
     }
     if (input.description !== undefined) {
       row.description =
-        input.description === null
-          ? null
-          : input.description.trim() || null;
+        input.description === null ? null : input.description.trim() || null;
     }
     if (input.saving_type !== undefined) {
       row.savingType = this.requireSavingType(input.saving_type);
@@ -324,39 +319,41 @@ export class SavingsService {
     await this.assertSufficientAccountBalance(savings.accountId, amountCents);
     await this.categoryService.assertAssignable(input.category_id, userId);
 
-    const saved = await this.savingsRepo.manager.transaction(async (manager) => {
-      const savingsRepo = manager.getRepository(Savings);
-      const row = await savingsRepo.findOne({
-        where: { id: input.savings_id },
-      });
-      if (!row || row.userId !== userId) {
-        throw new NotFoundException('Savings not found.');
-      }
+    const saved = await this.savingsRepo.manager.transaction(
+      async (manager) => {
+        const savingsRepo = manager.getRepository(Savings);
+        const row = await savingsRepo.findOne({
+          where: { id: input.savings_id },
+        });
+        if (!row || row.userId !== userId) {
+          throw new NotFoundException('Savings not found.');
+        }
 
-      await this.transactionService.create(
-        userId,
-        {
-          account_id: row.accountId,
-          category_id: input.category_id,
-          transaction_type: 'SAVING_DEPOSIT',
-          amount_cents: amountCents,
-          transaction_date: transactionDate,
-          description: `Deposit to ${row.name}`,
-          reference_number: input.reference_number,
-          notes: input.notes,
-          status: 'COMPLETED',
-        },
-        manager,
-      );
+        await this.transactionService.create(
+          userId,
+          {
+            account_id: row.accountId,
+            category_id: input.category_id,
+            transaction_type: 'SAVING_DEPOSIT',
+            amount_cents: amountCents,
+            transaction_date: transactionDate,
+            description: `Deposit to ${row.name}`,
+            reference_number: input.reference_number,
+            notes: input.notes,
+            status: 'COMPLETED',
+          },
+          manager,
+        );
 
-      row.currentBalanceCents += amountCents;
-      row.status = this.resolveStatus(
-        row.status,
-        row.currentBalanceCents,
-        row.targetAmountCents,
-      );
-      return savingsRepo.save(row);
-    });
+        row.currentBalanceCents += amountCents;
+        row.status = this.resolveStatus(
+          row.status,
+          row.currentBalanceCents,
+          row.targetAmountCents,
+        );
+        return savingsRepo.save(row);
+      },
+    );
 
     return this.toModel(saved);
   }
@@ -381,42 +378,44 @@ export class SavingsService {
     await this.assertWritableAccount(userId, savings.accountId);
     await this.categoryService.assertAssignable(input.category_id, userId);
 
-    const saved = await this.savingsRepo.manager.transaction(async (manager) => {
-      const savingsRepo = manager.getRepository(Savings);
-      const row = await savingsRepo.findOne({
-        where: { id: input.savings_id },
-      });
-      if (!row || row.userId !== userId) {
-        throw new NotFoundException('Savings not found.');
-      }
-      if (amountCents > row.currentBalanceCents) {
-        throw new BadRequestException('Insufficient savings balance.');
-      }
+    const saved = await this.savingsRepo.manager.transaction(
+      async (manager) => {
+        const savingsRepo = manager.getRepository(Savings);
+        const row = await savingsRepo.findOne({
+          where: { id: input.savings_id },
+        });
+        if (!row || row.userId !== userId) {
+          throw new NotFoundException('Savings not found.');
+        }
+        if (amountCents > row.currentBalanceCents) {
+          throw new BadRequestException('Insufficient savings balance.');
+        }
 
-      await this.transactionService.create(
-        userId,
-        {
-          account_id: row.accountId,
-          category_id: input.category_id,
-          transaction_type: 'SAVING_WITHDRAW',
-          amount_cents: amountCents,
-          transaction_date: transactionDate,
-          description: `Withdrawal from ${row.name}`,
-          reference_number: input.reference_number,
-          notes: input.notes,
-          status: 'COMPLETED',
-        },
-        manager,
-      );
+        await this.transactionService.create(
+          userId,
+          {
+            account_id: row.accountId,
+            category_id: input.category_id,
+            transaction_type: 'SAVING_WITHDRAW',
+            amount_cents: amountCents,
+            transaction_date: transactionDate,
+            description: `Withdrawal from ${row.name}`,
+            reference_number: input.reference_number,
+            notes: input.notes,
+            status: 'COMPLETED',
+          },
+          manager,
+        );
 
-      row.currentBalanceCents -= amountCents;
-      row.status = this.resolveStatus(
-        row.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE',
-        row.currentBalanceCents,
-        row.targetAmountCents,
-      );
-      return savingsRepo.save(row);
-    });
+        row.currentBalanceCents -= amountCents;
+        row.status = this.resolveStatus(
+          row.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE',
+          row.currentBalanceCents,
+          row.targetAmountCents,
+        );
+        return savingsRepo.save(row);
+      },
+    );
 
     return this.toModel(saved);
   }
@@ -484,7 +483,10 @@ export class SavingsService {
     userId: string,
     accountId: string,
   ): Promise<void> {
-    const account = await this.accountService.findByIdForUser(userId, accountId);
+    const account = await this.accountService.findByIdForUser(
+      userId,
+      accountId,
+    );
     if (account.isArchived) {
       throw new BadRequestException(
         'Archived accounts cannot be linked to savings.',
@@ -545,10 +547,7 @@ export class SavingsService {
     targetAmountCents: number | null,
     currentBalanceCents: number,
   ): void {
-    if (
-      targetAmountCents !== null &&
-      currentBalanceCents > targetAmountCents
-    ) {
+    if (targetAmountCents !== null && currentBalanceCents > targetAmountCents) {
       throw new BadRequestException(
         'Current balance cannot exceed target amount.',
       );

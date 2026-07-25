@@ -16,10 +16,7 @@ import { SavingsService } from './savings.service';
 describe('SavingsService', () => {
   let service: SavingsService;
   let savingsRepo: jest.Mocked<
-    Pick<
-      Repository<Savings>,
-      'find' | 'findOne' | 'create' | 'save' | 'remove'
-    >
+    Pick<Repository<Savings>, 'find' | 'findOne' | 'create' | 'save' | 'remove'>
   > & {
     manager: { transaction: jest.Mock };
   };
@@ -77,7 +74,7 @@ describe('SavingsService', () => {
           updatedAt: entity.updatedAt ?? new Date('2026-01-01T00:00:00.000Z'),
         } as Savings;
       }),
-      remove: jest.fn(async (x) => x as Savings),
+      remove: jest.fn(async (x) => x),
       manager: {
         transaction: jest.fn(async (fn: (m: unknown) => Promise<unknown>) =>
           fn({
@@ -94,11 +91,12 @@ describe('SavingsService', () => {
     )._managerSavingsRepo = managerSavingsRepo;
 
     accountsRepo = {
-      findOne: jest.fn(async () =>
-        ({
-          id: 'acc-1',
-          currentBalanceCents: 500000,
-        }) as Account,
+      findOne: jest.fn(
+        async () =>
+          ({
+            id: 'acc-1',
+            currentBalanceCents: 500000,
+          }) as Account,
       ),
     };
 

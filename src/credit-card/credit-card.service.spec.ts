@@ -187,9 +187,7 @@ describe('CreditCardService', () => {
   });
 
   it('updates limits and recalculates available limit', async () => {
-    repo.findOne
-      .mockResolvedValueOnce(baseCard())
-      .mockResolvedValueOnce(null);
+    repo.findOne.mockResolvedValueOnce(baseCard()).mockResolvedValueOnce(null);
 
     const result = await service.update('user-1', 'cc-1', {
       credit_limit_cents: 2000000,

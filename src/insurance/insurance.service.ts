@@ -12,11 +12,7 @@ import {
   PAYMENT_FREQUENCIES,
 } from './dto/create-insurance.input';
 import { UpdateInsuranceInput } from './dto/update-insurance.input';
-import {
-  Insurance,
-  InsuranceType,
-  PaymentFrequency,
-} from './insurance.entity';
+import { Insurance, InsuranceType, PaymentFrequency } from './insurance.entity';
 import { InsuranceModel } from './models/insurance.model';
 
 @Injectable()
@@ -42,10 +38,7 @@ export class InsuranceService {
     return rows.map((row) => this.toModel(row));
   }
 
-  async findByType(
-    userId: string,
-    type: string,
-  ): Promise<InsuranceModel[]> {
+  async findByType(userId: string, type: string): Promise<InsuranceModel[]> {
     const insuranceType = this.requireInsuranceType(type);
     const rows = await this.insurancesRepo.find({
       where: { userId, insuranceType },
@@ -236,10 +229,7 @@ export class InsuranceService {
     return this.toModel(saved);
   }
 
-  async archive(
-    userId: string,
-    insuranceId: string,
-  ): Promise<InsuranceModel> {
+  async archive(userId: string, insuranceId: string): Promise<InsuranceModel> {
     const policy = await this.requireOwnedPolicy(userId, insuranceId);
     policy.isActive = false;
     const saved = await this.insurancesRepo.save(policy);
@@ -270,7 +260,10 @@ export class InsuranceService {
     previousRenewalDate: string;
     previousLastPaymentDate: string | null;
   }> {
-    const paymentDate = this.requireDateString(input.paymentDate, 'Payment date');
+    const paymentDate = this.requireDateString(
+      input.paymentDate,
+      'Payment date',
+    );
     const coveragePeriodEnd = this.requireDateString(
       input.coveragePeriodEnd,
       'Coverage period end',
