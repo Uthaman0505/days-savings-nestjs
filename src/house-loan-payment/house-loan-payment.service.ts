@@ -178,8 +178,7 @@ export class HouseLoanPaymentService {
     const existing = await this.requireOwnedPayment(userId, paymentId);
 
     const nextLoanId = input.house_loan_id ?? existing.houseLoanId;
-    const nextAccountId =
-      input.payment_account_id ?? existing.paymentAccountId;
+    const nextAccountId = input.payment_account_id ?? existing.paymentAccountId;
     const nextAmount =
       input.amount_cents !== undefined
         ? this.requirePositiveAmount(input.amount_cents)
@@ -275,8 +274,7 @@ export class HouseLoanPaymentService {
               : input.reference_number.trim() || null;
         }
         if (input.notes !== undefined) {
-          row.notes =
-            input.notes === null ? null : input.notes.trim() || null;
+          row.notes = input.notes === null ? null : input.notes.trim() || null;
         }
 
         return paymentRepo.save(row);
@@ -370,7 +368,10 @@ export class HouseLoanPaymentService {
     userId: string,
     accountId: string,
   ): Promise<void> {
-    const account = await this.accountService.findByIdForUser(userId, accountId);
+    const account = await this.accountService.findByIdForUser(
+      userId,
+      accountId,
+    );
     if (account.isArchived) {
       throw new BadRequestException(
         'Archived accounts cannot be used for house loan payments.',

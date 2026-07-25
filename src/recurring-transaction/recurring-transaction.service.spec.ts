@@ -96,7 +96,7 @@ describe('RecurringTransactionService', () => {
           updatedAt: entity.updatedAt ?? new Date('2026-01-01T00:00:00.000Z'),
         } as RecurringTransaction;
       }),
-      remove: jest.fn(async (x) => x as RecurringTransaction),
+      remove: jest.fn(async (x) => x),
       createQueryBuilder: jest.fn(),
       manager: {
         transaction: jest.fn(async (fn: (m: unknown) => Promise<unknown>) =>
@@ -110,7 +110,10 @@ describe('RecurringTransactionService', () => {
     )._managerRepo = managerRepo;
 
     accountService = {
-      findByIdForUser: jest.fn(async () => ({ id: 'acc-1', isArchived: false })),
+      findByIdForUser: jest.fn(async () => ({
+        id: 'acc-1',
+        isArchived: false,
+      })),
     };
     categoryService = {
       assertAssignable: jest.fn(async () => ({ id: 'cat-1' })),
@@ -300,9 +303,9 @@ describe('RecurringTransactionService', () => {
     incomeService.create.mockRejectedValue(new Error('Insufficient funds'));
     managerRepo().findOne.mockResolvedValue({ ...row });
 
-    await expect(
-      service.executeOne(row, { force: false }),
-    ).rejects.toThrow('Insufficient funds');
+    await expect(service.executeOne(row, { force: false })).rejects.toThrow(
+      'Insufficient funds',
+    );
 
     expect(managerRepo().save).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -96,11 +96,12 @@ describe('FamilyLoanPaymentService', () => {
     )._managerPaymentRepo = managerPaymentRepo;
 
     accountsRepo = {
-      findOne: jest.fn(async () =>
-        ({
-          id: 'acc-1',
-          currentBalanceCents: 500000,
-        }) as Account,
+      findOne: jest.fn(
+        async () =>
+          ({
+            id: 'acc-1',
+            currentBalanceCents: 500000,
+          }) as Account,
       ),
     };
 

@@ -100,40 +100,42 @@ export class IncomeService {
     await this.assertWritableAccount(userId, input.account_id);
     await this.assertIncomeCategory(userId, input.category_id);
 
-    const saved = await this.incomesRepo.manager.transaction(async (manager) => {
-      const incomeRepo = manager.getRepository(Income);
+    const saved = await this.incomesRepo.manager.transaction(
+      async (manager) => {
+        const incomeRepo = manager.getRepository(Income);
 
-      const ledger = await this.transactionService.create(
-        userId,
-        {
-          account_id: input.account_id,
-          category_id: input.category_id,
-          transaction_type: 'INCOME',
-          amount_cents: amountCents,
-          transaction_date: receivedDate,
-          description: input.description,
-          reference_number: input.reference_number,
-          notes: input.notes,
-          status: 'COMPLETED',
-        },
-        manager,
-      );
+        const ledger = await this.transactionService.create(
+          userId,
+          {
+            account_id: input.account_id,
+            category_id: input.category_id,
+            transaction_type: 'INCOME',
+            amount_cents: amountCents,
+            transaction_date: receivedDate,
+            description: input.description,
+            reference_number: input.reference_number,
+            notes: input.notes,
+            status: 'COMPLETED',
+          },
+          manager,
+        );
 
-      const entity = incomeRepo.create({
-        userId,
-        transactionId: ledger.id,
-        accountId: input.account_id,
-        categoryId: input.category_id,
-        incomeSource,
-        amountCents,
-        receivedDate,
-        description: input.description?.trim() || null,
-        referenceNumber: input.reference_number?.trim() || null,
-        notes: input.notes?.trim() || null,
-      });
+        const entity = incomeRepo.create({
+          userId,
+          transactionId: ledger.id,
+          accountId: input.account_id,
+          categoryId: input.category_id,
+          incomeSource,
+          amountCents,
+          receivedDate,
+          description: input.description?.trim() || null,
+          referenceNumber: input.reference_number?.trim() || null,
+          notes: input.notes?.trim() || null,
+        });
 
-      return incomeRepo.save(entity);
-    });
+        return incomeRepo.save(entity);
+      },
+    );
 
     return this.toModel(saved);
   }
@@ -167,52 +169,54 @@ export class IncomeService {
       await this.assertIncomeCategory(userId, nextCategoryId);
     }
 
-    const saved = await this.incomesRepo.manager.transaction(async (manager) => {
-      const incomeRepo = manager.getRepository(Income);
+    const saved = await this.incomesRepo.manager.transaction(
+      async (manager) => {
+        const incomeRepo = manager.getRepository(Income);
 
-      const row = await incomeRepo.findOne({ where: { id: incomeId } });
-      if (!row || row.userId !== userId) {
-        throw new NotFoundException('Income not found.');
-      }
+        const row = await incomeRepo.findOne({ where: { id: incomeId } });
+        if (!row || row.userId !== userId) {
+          throw new NotFoundException('Income not found.');
+        }
 
-      await this.transactionService.update(
-        userId,
-        row.transactionId,
-        {
-          account_id: input.account_id,
-          category_id: input.category_id,
-          amount_cents: input.amount_cents,
-          transaction_date: input.received_date,
-          description: input.description,
-          reference_number: input.reference_number,
-          notes: input.notes,
-        },
-        manager,
-      );
+        await this.transactionService.update(
+          userId,
+          row.transactionId,
+          {
+            account_id: input.account_id,
+            category_id: input.category_id,
+            amount_cents: input.amount_cents,
+            transaction_date: input.received_date,
+            description: input.description,
+            reference_number: input.reference_number,
+            notes: input.notes,
+          },
+          manager,
+        );
 
-      if (input.account_id !== undefined) row.accountId = nextAccountId;
-      if (input.category_id !== undefined) row.categoryId = nextCategoryId;
-      if (input.income_source !== undefined) row.incomeSource = nextSource;
-      if (input.amount_cents !== undefined) row.amountCents = nextAmount;
-      if (input.received_date !== undefined) row.receivedDate = nextDate;
-      if (input.description !== undefined) {
-        row.description =
-          input.description === null
-            ? null
-            : input.description.trim() || null;
-      }
-      if (input.reference_number !== undefined) {
-        row.referenceNumber =
-          input.reference_number === null
-            ? null
-            : input.reference_number.trim() || null;
-      }
-      if (input.notes !== undefined) {
-        row.notes = input.notes === null ? null : input.notes.trim() || null;
-      }
+        if (input.account_id !== undefined) row.accountId = nextAccountId;
+        if (input.category_id !== undefined) row.categoryId = nextCategoryId;
+        if (input.income_source !== undefined) row.incomeSource = nextSource;
+        if (input.amount_cents !== undefined) row.amountCents = nextAmount;
+        if (input.received_date !== undefined) row.receivedDate = nextDate;
+        if (input.description !== undefined) {
+          row.description =
+            input.description === null
+              ? null
+              : input.description.trim() || null;
+        }
+        if (input.reference_number !== undefined) {
+          row.referenceNumber =
+            input.reference_number === null
+              ? null
+              : input.reference_number.trim() || null;
+        }
+        if (input.notes !== undefined) {
+          row.notes = input.notes === null ? null : input.notes.trim() || null;
+        }
 
-      return incomeRepo.save(row);
-    });
+        return incomeRepo.save(row);
+      },
+    );
 
     return this.toModel(saved);
   }
@@ -295,7 +299,10 @@ export class IncomeService {
     userId: string,
     accountId: string,
   ): Promise<void> {
-    const account = await this.accountService.findByIdForUser(userId, accountId);
+    const account = await this.accountService.findByIdForUser(
+      userId,
+      accountId,
+    );
     if (account.isArchived) {
       throw new BadRequestException(
         'Archived accounts cannot be used for income.',

@@ -15,8 +15,14 @@ import {
   Not,
   Repository,
 } from 'typeorm';
-import { AddCollateralInput, UpdateCollateralInput } from './dto/add-collateral.input';
-import { CreatePawnCollateralInput, CreatePawnLoanInput } from './dto/create-pawn-loan.input';
+import {
+  AddCollateralInput,
+  UpdateCollateralInput,
+} from './dto/add-collateral.input';
+import {
+  CreatePawnCollateralInput,
+  CreatePawnLoanInput,
+} from './dto/create-pawn-loan.input';
 import {
   DeletePawnLoanInput,
   ForfeitPawnLoanInput,
@@ -168,14 +174,22 @@ export class PawnLoanService {
     userId: string,
     input: CreatePawnLoanInput,
   ): Promise<PawnLoanModel> {
-    const pawnShopName = this.normalizeName(input.pawn_shop_name, 'Pawn shop name');
-    const receiptNumber = this.normalizeName(input.receipt_number, 'Receipt number');
+    const pawnShopName = this.normalizeName(
+      input.pawn_shop_name,
+      'Pawn shop name',
+    );
+    const receiptNumber = this.normalizeName(
+      input.receipt_number,
+      'Receipt number',
+    );
     const principal = this.requirePositiveCents(
       input.principal_amount_cents,
       'Principal amount',
     );
     const interestRate = this.requireInterestRate(input.interest_rate ?? 0);
-    const interestType = this.requireInterestType(input.interest_type ?? 'FLAT');
+    const interestType = this.requireInterestType(
+      input.interest_type ?? 'FLAT',
+    );
     const loanTermMonths = this.requirePositiveInt(
       input.loan_term_months ?? 6,
       'Loan term',
@@ -473,7 +487,7 @@ export class PawnLoanService {
       input.principal_paid_cents ?? 0,
       'Principal paid',
     );
-    let interestPaid = this.requireNonNegativeCents(
+    const interestPaid = this.requireNonNegativeCents(
       input.interest_paid_cents ?? 0,
       'Interest paid',
     );
@@ -498,7 +512,9 @@ export class PawnLoanService {
       );
     }
     if (principalPaid + interestPaid <= 0) {
-      throw new BadRequestException('Payment amount must be greater than zero.');
+      throw new BadRequestException(
+        'Payment amount must be greater than zero.',
+      );
     }
     if (principalPaid > loan.outstandingPrincipalCents) {
       throw new BadRequestException(
@@ -516,7 +532,9 @@ export class PawnLoanService {
 
       locked.outstandingPrincipalCents -= principalPaid;
       if (locked.outstandingPrincipalCents < 0) {
-        throw new BadRequestException('Outstanding principal cannot be negative.');
+        throw new BadRequestException(
+          'Outstanding principal cannot be negative.',
+        );
       }
 
       const isFullRedemption =
@@ -786,10 +804,7 @@ export class PawnLoanService {
     return this.toLoanModel(saved);
   }
 
-  async delete(
-    userId: string,
-    input: DeletePawnLoanInput,
-  ): Promise<boolean> {
+  async delete(userId: string, input: DeletePawnLoanInput): Promise<boolean> {
     const loan = await this.requireOwnedLoan(userId, input.id);
     await this.loansRepo.softRemove(loan);
     return true;
@@ -894,7 +909,11 @@ export class PawnLoanService {
     return d.toISOString().slice(0, 10);
   }
 
-  private assertDateAfter(later: string, earlier: string, message: string): void {
+  private assertDateAfter(
+    later: string,
+    earlier: string,
+    message: string,
+  ): void {
     if (later <= earlier) {
       throw new BadRequestException(message);
     }

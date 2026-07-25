@@ -8,7 +8,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Not, Repository } from 'typeorm';
 import { AccountService } from '../account/account.service';
 import { CardNetwork, CreditCard } from './credit-card.entity';
-import { CreateCreditCardInput, CARD_NETWORKS } from './dto/create-credit-card.input';
+import {
+  CreateCreditCardInput,
+  CARD_NETWORKS,
+} from './dto/create-credit-card.input';
 import { UpdateCreditCardInput } from './dto/update-credit-card.input';
 import { CreditCardModel } from './models/credit-card.model';
 
@@ -52,7 +55,9 @@ export class CreditCardService {
     const bankName = this.normalizeName(input.bank_name, 'Bank name');
     const cardNetwork = this.requireCardNetwork(input.card_network);
     const lastFourDigits = this.requireLastFour(input.last_four_digits);
-    const creditLimitCents = this.requirePositiveLimit(input.credit_limit_cents);
+    const creditLimitCents = this.requirePositiveLimit(
+      input.credit_limit_cents,
+    );
     const outstandingBalanceCents = this.requireNonNegativeOutstanding(
       input.outstanding_balance_cents ?? 0,
     );
@@ -206,7 +211,9 @@ export class CreditCardService {
     manager?: EntityManager,
   ): Promise<CreditCardModel> {
     if (!Number.isInteger(paymentAmountCents) || paymentAmountCents <= 0) {
-      throw new BadRequestException('Payment amount must be greater than zero.');
+      throw new BadRequestException(
+        'Payment amount must be greater than zero.',
+      );
     }
 
     const run = async (mgr: EntityManager): Promise<CreditCard> => {
@@ -248,7 +255,9 @@ export class CreditCardService {
     manager?: EntityManager,
   ): Promise<CreditCardModel> {
     if (!Number.isInteger(paymentAmountCents) || paymentAmountCents <= 0) {
-      throw new BadRequestException('Payment amount must be greater than zero.');
+      throw new BadRequestException(
+        'Payment amount must be greater than zero.',
+      );
     }
 
     const run = async (mgr: EntityManager): Promise<CreditCard> => {
@@ -261,8 +270,7 @@ export class CreditCardService {
         throw new ForbiddenException('You do not own this credit card.');
       }
 
-      const nextOutstanding =
-        card.outstandingBalanceCents + paymentAmountCents;
+      const nextOutstanding = card.outstandingBalanceCents + paymentAmountCents;
       if (nextOutstanding > card.creditLimitCents) {
         throw new BadRequestException(
           'Restoring this payment would exceed the credit limit.',
@@ -364,9 +372,7 @@ export class CreditCardService {
 
   private requireNonNegativeOutstanding(value: number): number {
     if (!Number.isInteger(value) || value < 0) {
-      throw new BadRequestException(
-        'Outstanding balance cannot be negative.',
-      );
+      throw new BadRequestException('Outstanding balance cannot be negative.');
     }
     return value;
   }
@@ -381,7 +387,9 @@ export class CreditCardService {
   private requireLastFour(value: string): string {
     const trimmed = value.trim();
     if (!/^\d{4}$/.test(trimmed)) {
-      throw new BadRequestException('Last four digits must be exactly 4 digits.');
+      throw new BadRequestException(
+        'Last four digits must be exactly 4 digits.',
+      );
     }
     return trimmed;
   }

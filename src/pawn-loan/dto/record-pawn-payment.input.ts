@@ -10,10 +10,7 @@ import {
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import {
-  PAWN_PAYMENT_METHODS,
-  PAWN_PAYMENT_TYPES,
-} from '../pawn-loan.enums';
+import { PAWN_PAYMENT_METHODS, PAWN_PAYMENT_TYPES } from '../pawn-loan.enums';
 
 @InputType()
 export class RecordPawnPaymentInput {
@@ -31,13 +28,21 @@ export class RecordPawnPaymentInput {
   @IsDate()
   payment_date: Date;
 
-  @Field(() => Int, { name: 'principal_paid_cents', nullable: true, defaultValue: 0 })
+  @Field(() => Int, {
+    name: 'principal_paid_cents',
+    nullable: true,
+    defaultValue: 0,
+  })
   @IsOptional()
   @IsInt()
   @Min(0)
   principal_paid_cents?: number;
 
-  @Field(() => Int, { name: 'interest_paid_cents', nullable: true, defaultValue: 0 })
+  @Field(() => Int, {
+    name: 'interest_paid_cents',
+    nullable: true,
+    defaultValue: 0,
+  })
   @IsOptional()
   @IsInt()
   @Min(0)

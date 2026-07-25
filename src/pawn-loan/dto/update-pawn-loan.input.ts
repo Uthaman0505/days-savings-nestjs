@@ -10,10 +10,7 @@ import {
   Matches,
   Min,
 } from 'class-validator';
-import {
-  PAWN_INTEREST_TYPES,
-  PAWN_LOAN_STATUSES,
-} from '../pawn-loan.enums';
+import { PAWN_INTEREST_TYPES, PAWN_LOAN_STATUSES } from '../pawn-loan.enums';
 
 @InputType()
 export class UpdatePawnLoanInput {

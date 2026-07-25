@@ -26,9 +26,13 @@ export type CardNetwork =
 @Index('uq_credit_cards_user_card_name', ['userId', 'cardName'], {
   unique: true,
 })
-@Index('uq_credit_cards_user_bank_last_four', ['userId', 'bankName', 'lastFourDigits'], {
-  unique: true,
-})
+@Index(
+  'uq_credit_cards_user_bank_last_four',
+  ['userId', 'bankName', 'lastFourDigits'],
+  {
+    unique: true,
+  },
+)
 export class CreditCard {
   @PrimaryGeneratedColumn('uuid')
   id: string;

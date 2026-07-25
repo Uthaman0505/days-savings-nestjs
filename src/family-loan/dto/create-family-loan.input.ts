@@ -64,7 +64,11 @@ export class CreateFamilyLoanInput {
   @Min(0)
   outstanding_balance_cents?: number;
 
-  @Field(() => Float, { name: 'interest_rate', nullable: true, defaultValue: 0 })
+  @Field(() => Float, {
+    name: 'interest_rate',
+    nullable: true,
+    defaultValue: 0,
+  })
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 4 })
   @Min(0)

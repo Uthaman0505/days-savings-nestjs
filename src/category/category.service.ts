@@ -88,10 +88,7 @@ export class CategoryService implements OnModuleInit {
     return rows.map((row) => this.toModel(row));
   }
 
-  async findByType(
-    userId: string,
-    type: string,
-  ): Promise<CategoryModel[]> {
+  async findByType(userId: string, type: string): Promise<CategoryModel[]> {
     const categoryType = this.requireCategoryType(type);
     const [systemRows, userRows] = await Promise.all([
       this.categoriesRepo.find({
@@ -161,9 +158,7 @@ export class CategoryService implements OnModuleInit {
         ? this.requireCategoryType(input.type)
         : category.type;
     const nextName =
-      input.name !== undefined
-        ? this.normalizeName(input.name)
-        : category.name;
+      input.name !== undefined ? this.normalizeName(input.name) : category.name;
 
     if (input.name !== undefined || input.type !== undefined) {
       await this.assertUniqueUserCategory(
@@ -178,17 +173,13 @@ export class CategoryService implements OnModuleInit {
     if (input.type !== undefined) category.type = nextType;
     if (input.description !== undefined) {
       category.description =
-        input.description === null
-          ? null
-          : input.description.trim() || null;
+        input.description === null ? null : input.description.trim() || null;
     }
     if (input.icon !== undefined) {
-      category.icon =
-        input.icon === null ? null : input.icon.trim() || null;
+      category.icon = input.icon === null ? null : input.icon.trim() || null;
     }
     if (input.color !== undefined) {
-      category.color =
-        input.color === null ? null : input.color.trim() || null;
+      category.color = input.color === null ? null : input.color.trim() || null;
     }
     if (input.display_order !== undefined) {
       category.displayOrder = input.display_order;
@@ -221,7 +212,7 @@ export class CategoryService implements OnModuleInit {
     const category = await this.requireOwnedUserCategory(userId, categoryId);
     this.assertNotSystem(category);
 
-    const referenced = await this.countTransactionReferences(categoryId);
+    const referenced = this.countTransactionReferences(categoryId);
     if (referenced > 0) {
       throw new BadRequestException(
         'Category cannot be deleted because it is referenced by transactions. Archive it instead.',
@@ -236,7 +227,10 @@ export class CategoryService implements OnModuleInit {
    * Future Income/Expense/Ledger modules should call this before assigning a category.
    * Archived categories must not be used on new transactions.
    */
-  async assertAssignable(categoryId: string, userId: string): Promise<Category> {
+  async assertAssignable(
+    categoryId: string,
+    userId: string,
+  ): Promise<Category> {
     const category = await this.requireVisibleCategory(userId, categoryId);
     if (category.isArchived) {
       throw new BadRequestException(
@@ -294,7 +288,9 @@ export class CategoryService implements OnModuleInit {
 
       if (toSave.length > 0) {
         await this.categoriesRepo.save(toSave);
-        this.logger.log(`Seeded/updated ${toSave.length} system categor(y/ies).`);
+        this.logger.log(
+          `Seeded/updated ${toSave.length} system categor(y/ies).`,
+        );
       }
     } catch (e) {
       this.logger.warn(
@@ -384,9 +380,7 @@ export class CategoryService implements OnModuleInit {
    * Hook for future finance documents that reference categories.
    * Returns 0 until Income/Expense/Ledger modules persist category_id FKs.
    */
-  private async countTransactionReferences(
-    _categoryId: string,
-  ): Promise<number> {
+  private countTransactionReferences(_categoryId: string): number {
     return 0;
   }
 

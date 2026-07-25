@@ -216,8 +216,7 @@ export class ExpenseService {
               : input.reference_number.trim() || null;
         }
         if (input.notes !== undefined) {
-          row.notes =
-            input.notes === null ? null : input.notes.trim() || null;
+          row.notes = input.notes === null ? null : input.notes.trim() || null;
         }
 
         return expenseRepo.save(row);
@@ -305,7 +304,10 @@ export class ExpenseService {
     userId: string,
     accountId: string,
   ): Promise<void> {
-    const account = await this.accountService.findByIdForUser(userId, accountId);
+    const account = await this.accountService.findByIdForUser(
+      userId,
+      accountId,
+    );
     if (account.isArchived) {
       throw new BadRequestException(
         'Archived accounts cannot be used for expenses.',

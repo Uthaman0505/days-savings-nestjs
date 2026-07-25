@@ -11,10 +11,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { User } from '../user/user.entity';
-import type {
-  PawnInterestType,
-  PawnLoanStatus,
-} from './pawn-loan.enums';
+import type { PawnInterestType, PawnLoanStatus } from './pawn-loan.enums';
 import { PawnCollateral } from './pawn-collateral.entity';
 import { PawnPayment } from './pawn-payment.entity';
 import { PawnRenewal } from './pawn-renewal.entity';
@@ -59,7 +56,12 @@ export class PawnLoan {
   })
   interestRate: string;
 
-  @Column({ name: 'interest_type', type: 'varchar', length: 32, default: 'FLAT' })
+  @Column({
+    name: 'interest_type',
+    type: 'varchar',
+    length: 32,
+    default: 'FLAT',
+  })
   interestType: PawnInterestType;
 
   /** Loan term used for maturity / renewal cycles (months). */

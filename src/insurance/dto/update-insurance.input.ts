@@ -9,10 +9,7 @@ import {
   Matches,
   Min,
 } from 'class-validator';
-import {
-  INSURANCE_TYPES,
-  PAYMENT_FREQUENCIES,
-} from './create-insurance.input';
+import { INSURANCE_TYPES, PAYMENT_FREQUENCIES } from './create-insurance.input';
 
 @InputType()
 export class UpdateInsuranceInput {

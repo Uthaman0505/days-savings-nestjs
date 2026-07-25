@@ -68,7 +68,9 @@ export class RecurringTransactionService {
     return this.queryRecurring(userId, filter ?? {});
   }
 
-  async findActiveRecurring(userId: string): Promise<RecurringTransactionModel[]> {
+  async findActiveRecurring(
+    userId: string,
+  ): Promise<RecurringTransactionModel[]> {
     const rows = await this.recurringRepo.find({
       where: { userId, isActive: true },
       order: { nextExecutionDate: 'ASC' },
@@ -279,10 +281,7 @@ export class RecurringTransactionService {
     return true;
   }
 
-  async runNow(
-    userId: string,
-    id: string,
-  ): Promise<RecurringTransactionModel> {
+  async runNow(userId: string, id: string): Promise<RecurringTransactionModel> {
     const row = await this.requireOwned(userId, id);
     await this.executeOne(row, { force: true });
     const refreshed = await this.requireOwned(userId, id);
@@ -591,10 +590,12 @@ export class RecurringTransactionService {
         return;
       }
 
-      default:
+      default: {
+        const unsupported: string = row.targetModule;
         throw new BadRequestException(
-          `Unsupported target module: ${row.targetModule}`,
+          `Unsupported target module: ${unsupported}`,
         );
+      }
     }
   }
 
@@ -712,7 +713,9 @@ export class RecurringTransactionService {
       payload.coverage_period_days = input.coverage_period_days;
     }
     if (input.goal_source_type) {
-      payload.goal_source_type = input.goal_source_type as 'ACCOUNT' | 'SAVINGS';
+      payload.goal_source_type = input.goal_source_type as
+        | 'ACCOUNT'
+        | 'SAVINGS';
     }
     if (input.savings_id) payload.savings_id = input.savings_id;
     return Object.keys(payload).length ? payload : null;

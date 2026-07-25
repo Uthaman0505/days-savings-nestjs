@@ -197,10 +197,7 @@ export class HouseLoanService {
     return this.toModel(saved);
   }
 
-  async archive(
-    userId: string,
-    houseLoanId: string,
-  ): Promise<HouseLoanModel> {
+  async archive(userId: string, houseLoanId: string): Promise<HouseLoanModel> {
     const loan = await this.requireOwnedLoan(userId, houseLoanId);
     loan.isActive = false;
     const saved = await this.houseLoansRepo.save(loan);
@@ -224,7 +221,9 @@ export class HouseLoanService {
     manager?: EntityManager,
   ): Promise<HouseLoanModel> {
     if (!Number.isInteger(paymentAmountCents) || paymentAmountCents <= 0) {
-      throw new BadRequestException('Payment amount must be greater than zero.');
+      throw new BadRequestException(
+        'Payment amount must be greater than zero.',
+      );
     }
 
     const run = async (mgr: EntityManager): Promise<HouseLoan> => {
@@ -264,7 +263,9 @@ export class HouseLoanService {
     manager?: EntityManager,
   ): Promise<HouseLoanModel> {
     if (!Number.isInteger(paymentAmountCents) || paymentAmountCents <= 0) {
-      throw new BadRequestException('Payment amount must be greater than zero.');
+      throw new BadRequestException(
+        'Payment amount must be greater than zero.',
+      );
     }
 
     const run = async (mgr: EntityManager): Promise<HouseLoan> => {
@@ -339,7 +340,10 @@ export class HouseLoanService {
     }
   }
 
-  private assertMaturityAfterStart(startDate: string, maturityDate: string): void {
+  private assertMaturityAfterStart(
+    startDate: string,
+    maturityDate: string,
+  ): void {
     if (maturityDate < startDate) {
       throw new BadRequestException(
         'Maturity date must be on or after start date.',

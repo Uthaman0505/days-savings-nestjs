@@ -96,11 +96,12 @@ describe('FamilyLoanService', () => {
     )._managerLoanRepo = managerLoanRepo;
 
     accountsRepo = {
-      findOne: jest.fn(async () =>
-        ({
-          id: 'acc-1',
-          currentBalanceCents: 500000,
-        }) as Account,
+      findOne: jest.fn(
+        async () =>
+          ({
+            id: 'acc-1',
+            currentBalanceCents: 500000,
+          }) as Account,
       ),
     };
 
@@ -328,9 +329,9 @@ describe('FamilyLoanService', () => {
       baseLoan({ userId: 'other-user' }),
     );
 
-    await expect(service.findByIdForUser('user-1', 'fl-1')).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(
+      service.findByIdForUser('user-1', 'fl-1'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('returns not found for missing loan', async () => {

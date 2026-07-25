@@ -98,7 +98,9 @@ describe('ExpenseService', () => {
     };
 
     (
-      expenseRepo as unknown as { _managerExpenseRepo: typeof managerExpenseRepo }
+      expenseRepo as unknown as {
+        _managerExpenseRepo: typeof managerExpenseRepo;
+      }
     )._managerExpenseRepo = managerExpenseRepo;
 
     transactionService = {

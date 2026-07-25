@@ -59,7 +59,9 @@ describe('CreditCardPaymentService', () => {
 
   beforeEach(async () => {
     const managerPaymentRepo = {
-      create: jest.fn((x: Partial<CreditCardPayment>) => x as CreditCardPayment),
+      create: jest.fn(
+        (x: Partial<CreditCardPayment>) => x as CreditCardPayment,
+      ),
       save: jest.fn(async (x: CreditCardPayment) => ({
         ...x,
         id: x.id ?? 'pay-1',
@@ -92,11 +94,12 @@ describe('CreditCardPaymentService', () => {
     )._managerPaymentRepo = managerPaymentRepo;
 
     accountsRepo = {
-      findOne: jest.fn(async () =>
-        ({
-          id: 'acc-1',
-          currentBalanceCents: 200000,
-        }) as Account,
+      findOne: jest.fn(
+        async () =>
+          ({
+            id: 'acc-1',
+            currentBalanceCents: 200000,
+          }) as Account,
       ),
     };
 

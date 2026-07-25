@@ -8,10 +8,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import type {
-  PawnPaymentMethod,
-  PawnPaymentType,
-} from './pawn-loan.enums';
+import type { PawnPaymentMethod, PawnPaymentType } from './pawn-loan.enums';
 import { PawnLoan } from './pawn-loan.entity';
 
 @Entity('pawn_payments')

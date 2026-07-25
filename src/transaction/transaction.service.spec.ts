@@ -21,9 +21,7 @@ describe('TransactionService', () => {
   > & {
     manager: { transaction: jest.Mock };
   };
-  let accountsRepo: jest.Mocked<
-    Pick<Repository<Account>, 'findOne' | 'save'>
-  >;
+  let accountsRepo: jest.Mocked<Pick<Repository<Account>, 'findOne' | 'save'>>;
   let categoriesRepo: jest.Mocked<Pick<Repository<Category>, 'findOne'>>;
 
   const baseAccount = (overrides: Partial<Account> = {}): Account =>
@@ -136,8 +134,9 @@ describe('TransactionService', () => {
     };
 
     // Expose manager repos for assertions via closure on txRepo.manager
-    (txRepo as unknown as { _managerTxRepo: typeof managerTxRepo })._managerTxRepo =
-      managerTxRepo;
+    (
+      txRepo as unknown as { _managerTxRepo: typeof managerTxRepo }
+    )._managerTxRepo = managerTxRepo;
     (
       txRepo as unknown as { _managerAccountsRepo: typeof managerAccountsRepo }
     )._managerAccountsRepo = managerAccountsRepo;
@@ -155,12 +154,16 @@ describe('TransactionService', () => {
   });
 
   const managerTxRepo = () =>
-    (txRepo as unknown as { _managerTxRepo: {
-      create: jest.Mock;
-      save: jest.Mock;
-      findOne: jest.Mock;
-      remove: jest.Mock;
-    } })._managerTxRepo;
+    (
+      txRepo as unknown as {
+        _managerTxRepo: {
+          create: jest.Mock;
+          save: jest.Mock;
+          findOne: jest.Mock;
+          remove: jest.Mock;
+        };
+      }
+    )._managerTxRepo;
 
   it('creates an income transaction and increases account balance', async () => {
     accountsRepo.findOne.mockResolvedValue(baseAccount());
@@ -352,9 +355,7 @@ describe('TransactionService', () => {
 
   it('reverses balance when deleting a completed transaction', async () => {
     txRepo.findOne.mockResolvedValue(baseTx({ amountCents: 2000 }));
-    managerTxRepo().findOne.mockResolvedValue(
-      baseTx({ amountCents: 2000 }),
-    );
+    managerTxRepo().findOne.mockResolvedValue(baseTx({ amountCents: 2000 }));
     accountsRepo.findOne.mockResolvedValue(
       baseAccount({ currentBalanceCents: 12000 }),
     );

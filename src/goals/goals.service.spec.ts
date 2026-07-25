@@ -63,9 +63,7 @@ describe('GoalsService', () => {
       save: jest.fn(async (x: Goal) => x),
     };
     const managerContributionRepo = {
-      create: jest.fn(
-        (x: Partial<GoalContribution>) => x as GoalContribution,
-      ),
+      create: jest.fn((x: Partial<GoalContribution>) => x as GoalContribution),
       save: jest.fn(async (x: GoalContribution) => ({
         ...x,
         id: x.id ?? 'gc-1',
@@ -87,7 +85,7 @@ describe('GoalsService', () => {
           updatedAt: entity.updatedAt ?? new Date('2026-01-01T00:00:00.000Z'),
         } as Goal;
       }),
-      remove: jest.fn(async (x) => x as Goal),
+      remove: jest.fn(async (x) => x),
       manager: {
         transaction: jest.fn(async (fn: (m: unknown) => Promise<unknown>) =>
           fn({
@@ -121,11 +119,12 @@ describe('GoalsService', () => {
     };
 
     accountsRepo = {
-      findOne: jest.fn(async () =>
-        ({
-          id: 'acc-1',
-          currentBalanceCents: 500000,
-        }) as Account,
+      findOne: jest.fn(
+        async () =>
+          ({
+            id: 'acc-1',
+            currentBalanceCents: 500000,
+          }) as Account,
       ),
     };
 
@@ -180,13 +179,6 @@ describe('GoalsService', () => {
         _managerGoalRepo: { findOne: jest.Mock; save: jest.Mock };
       }
     )._managerGoalRepo;
-
-  const managerContributionRepo = () =>
-    (
-      goalsRepo as unknown as {
-        _managerContributionRepo: { create: jest.Mock; save: jest.Mock };
-      }
-    )._managerContributionRepo;
 
   it('creates a goal without money movement', async () => {
     goalsRepo.findOne.mockResolvedValue(null);
@@ -396,9 +388,7 @@ describe('GoalsService', () => {
   });
 
   it('rejects delete when goal still has balance', async () => {
-    goalsRepo.findOne.mockResolvedValue(
-      baseGoal({ currentAmountCents: 5000 }),
-    );
+    goalsRepo.findOne.mockResolvedValue(baseGoal({ currentAmountCents: 5000 }));
 
     await expect(service.delete('user-1', 'goal-1')).rejects.toBeInstanceOf(
       BadRequestException,

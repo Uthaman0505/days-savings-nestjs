@@ -97,8 +97,9 @@ describe('IncomeService', () => {
       },
     };
 
-    (incomeRepo as unknown as { _managerIncomeRepo: typeof managerIncomeRepo })._managerIncomeRepo =
-      managerIncomeRepo;
+    (
+      incomeRepo as unknown as { _managerIncomeRepo: typeof managerIncomeRepo }
+    )._managerIncomeRepo = managerIncomeRepo;
 
     transactionService = {
       create: jest.fn(async () => ({

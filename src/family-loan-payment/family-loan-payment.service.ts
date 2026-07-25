@@ -184,8 +184,7 @@ export class FamilyLoanPaymentService {
     const existing = await this.requireOwnedPayment(userId, paymentId);
 
     const nextLoanId = input.family_loan_id ?? existing.familyLoanId;
-    const nextAccountId =
-      input.payment_account_id ?? existing.paymentAccountId;
+    const nextAccountId = input.payment_account_id ?? existing.paymentAccountId;
     const nextAmount =
       input.amount_cents !== undefined
         ? this.requirePositiveAmount(input.amount_cents)
@@ -287,8 +286,7 @@ export class FamilyLoanPaymentService {
               : input.reference_number.trim() || null;
         }
         if (input.notes !== undefined) {
-          row.notes =
-            input.notes === null ? null : input.notes.trim() || null;
+          row.notes = input.notes === null ? null : input.notes.trim() || null;
         }
 
         return paymentRepo.save(row);
@@ -373,9 +371,7 @@ export class FamilyLoanPaymentService {
       throw new NotFoundException('Family loan payment not found.');
     }
     if (row.userId !== userId) {
-      throw new ForbiddenException(
-        'You do not own this family loan payment.',
-      );
+      throw new ForbiddenException('You do not own this family loan payment.');
     }
     return row;
   }
@@ -400,7 +396,10 @@ export class FamilyLoanPaymentService {
     userId: string,
     accountId: string,
   ): Promise<void> {
-    const account = await this.accountService.findByIdForUser(userId, accountId);
+    const account = await this.accountService.findByIdForUser(
+      userId,
+      accountId,
+    );
     if (account.isArchived) {
       throw new BadRequestException(
         'Archived accounts cannot be used for family loan payments.',

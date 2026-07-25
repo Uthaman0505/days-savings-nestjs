@@ -1,4 +1,4 @@
-import { Field, Float, ID, InputType, Int } from '@nestjs/graphql';
+import { Field, Float, InputType, Int } from '@nestjs/graphql';
 import {
   IsDateString,
   IsInt,

@@ -58,7 +58,11 @@ export class CreateCategoryInput {
   @Min(0)
   display_order?: number;
 
-  @Field(() => Boolean, { name: 'is_default', nullable: true, defaultValue: false })
+  @Field(() => Boolean, {
+    name: 'is_default',
+    nullable: true,
+    defaultValue: false,
+  })
   @IsOptional()
   @IsBoolean()
   is_default?: boolean;
