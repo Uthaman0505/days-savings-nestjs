@@ -10,6 +10,30 @@ import { CompletedChallenge } from '../wallet/completed-challenge.entity';
 import { GiveUpChallenge } from '../wallet/give-up-challenge.entity';
 import { DailyTransactionLeverage } from '../wallet/daily-transaction-leverage.entity';
 import { YearlyChallengeReset } from '../wallet/yearly-challenge-reset.entity';
+import { GrabProfitEntry } from '../grab-profit/grab-profit-entry.entity';
+import { Account } from '../account/account.entity';
+import { Category } from '../category/category.entity';
+import { Transaction } from '../transaction/transaction.entity';
+import { Income } from '../income/income.entity';
+import { Expense } from '../expense/expense.entity';
+import { Transfer } from '../transfer/transfer.entity';
+import { CreditCard } from '../credit-card/credit-card.entity';
+import { CreditCardPayment } from '../credit-card-payment/credit-card-payment.entity';
+import { HouseLoan } from '../house-loan/house-loan.entity';
+import { HouseLoanPayment } from '../house-loan-payment/house-loan-payment.entity';
+import { Insurance } from '../insurance/insurance.entity';
+import { InsurancePayment } from '../insurance-payment/insurance-payment.entity';
+import { FamilyLoan } from '../family-loan/family-loan.entity';
+import { FamilyLoanPayment } from '../family-loan-payment/family-loan-payment.entity';
+import { Savings } from '../savings/savings.entity';
+import { Goal } from '../goals/goals.entity';
+import { GoalContribution } from '../goals/goal-contribution.entity';
+import { RecurringTransaction } from '../recurring-transaction/recurring-transaction.entity';
+import { PawnLoan } from '../pawn-loan/pawn-loan.entity';
+import { PawnCollateral } from '../pawn-loan/pawn-collateral.entity';
+import { PawnPayment } from '../pawn-loan/pawn-payment.entity';
+import { PawnRenewal } from '../pawn-loan/pawn-renewal.entity';
+import { PawnTransaction } from '../pawn-loan/pawn-transaction.entity';
 
 export const entities = [
   User,
@@ -24,4 +48,28 @@ export const entities = [
   GiveUpChallenge,
   DailyTransactionLeverage,
   YearlyChallengeReset,
+  GrabProfitEntry,
+  Account,
+  Category,
+  Transaction,
+  Income,
+  Expense,
+  Transfer,
+  CreditCard,
+  CreditCardPayment,
+  HouseLoan,
+  HouseLoanPayment,
+  Insurance,
+  InsurancePayment,
+  FamilyLoan,
+  FamilyLoanPayment,
+  Savings,
+  Goal,
+  GoalContribution,
+  RecurringTransaction,
+  PawnLoan,
+  PawnCollateral,
+  PawnPayment,
+  PawnRenewal,
+  PawnTransaction,
 ];
