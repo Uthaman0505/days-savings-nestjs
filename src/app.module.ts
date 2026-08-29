@@ -30,6 +30,8 @@ import { SavingsModule } from './savings/savings.module';
 import { GoalsModule } from './goals/goals.module';
 import { RecurringTransactionModule } from './recurring-transaction/recurring-transaction.module';
 import { PawnLoanModule } from './pawn-loan/pawn-loan.module';
+import { MissionControlModule } from './mission-control/mission-control.module';
+import { GoldModule } from './gold/gold.module';
 
 @Module({
   imports: [
@@ -71,6 +73,8 @@ import { PawnLoanModule } from './pawn-loan/pawn-loan.module';
     GoalsModule,
     RecurringTransactionModule,
     PawnLoanModule,
+    MissionControlModule,
+    GoldModule,
   ],
   providers: [AppService, AppResolver],
 })
