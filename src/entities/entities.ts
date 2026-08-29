@@ -34,6 +34,14 @@ import { PawnCollateral } from '../pawn-loan/pawn-collateral.entity';
 import { PawnPayment } from '../pawn-loan/pawn-payment.entity';
 import { PawnRenewal } from '../pawn-loan/pawn-renewal.entity';
 import { PawnTransaction } from '../pawn-loan/pawn-transaction.entity';
+import { SalaryPlan } from '../mission-control/salary-plan.entity';
+import { SalaryAllocation } from '../mission-control/salary-allocation.entity';
+import { DebtPriority } from '../mission-control/debt-priority.entity';
+import { FinancialMission } from '../mission-control/financial-mission.entity';
+import { MonthlySnapshot } from '../mission-control/monthly-snapshot.entity';
+import { ProjectionSettings } from '../mission-control/projection-settings.entity';
+import { GoldPurchase } from '../gold/gold-purchase.entity';
+import { GoldPrice } from '../gold/gold-price.entity';
 
 export const entities = [
   User,
@@ -72,4 +80,12 @@ export const entities = [
   PawnPayment,
   PawnRenewal,
   PawnTransaction,
+  SalaryPlan,
+  SalaryAllocation,
+  DebtPriority,
+  FinancialMission,
+  MonthlySnapshot,
+  ProjectionSettings,
+  GoldPurchase,
+  GoldPrice,
 ];
