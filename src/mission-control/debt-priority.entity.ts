@@ -18,11 +18,9 @@ import type {
 @Entity('debt_priorities')
 @Index('idx_debt_priorities_user_id', ['userId'])
 @Index('idx_debt_priorities_status', ['userId', 'status'])
-@Index(
-  'uq_debt_priorities_user_source',
-  ['userId', 'sourceType', 'sourceId'],
-  { unique: true },
-)
+@Index('uq_debt_priorities_user_source', ['userId', 'sourceType', 'sourceId'], {
+  unique: true,
+})
 export class DebtPriority {
   @PrimaryGeneratedColumn('uuid')
   id: string;

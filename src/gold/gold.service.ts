@@ -73,12 +73,11 @@ export class GoldService {
       // CRITICAL: portfolio valuation uses PG BUY (liquidation).
       currentValueCents = valueCentsFromGramsAndUnitPrice(
         totalGrams,
-        latestPrice!.pgBuyPricePerGramCents,
+        latestPrice.pgBuyPricePerGramCents,
       );
       unrealizedPlCents = currentValueCents - totalInvestedCents;
       if (totalInvestedCents > 0) {
-        unrealizedPlPercent =
-          (unrealizedPlCents / totalInvestedCents) * 100;
+        unrealizedPlPercent = (unrealizedPlCents / totalInvestedCents) * 100;
       }
     }
 
@@ -87,16 +86,16 @@ export class GoldService {
       totalInvestedCents,
       averageCostPerGramCents: averageCost,
       currentPgBuyPricePerGramCents: hasPrice
-        ? latestPrice!.pgBuyPricePerGramCents
+        ? latestPrice.pgBuyPricePerGramCents
         : null,
       currentPgSellPricePerGramCents: hasPrice
-        ? latestPrice!.pgSellPricePerGramCents
+        ? latestPrice.pgSellPricePerGramCents
         : null,
       currentValueCents,
       unrealizedPlCents,
       unrealizedPlPercent,
       purchaseCount: purchases.length,
-      priceAsOf: hasPrice ? latestPrice!.priceDate : null,
+      priceAsOf: hasPrice ? latestPrice.priceDate : null,
       hasPrice,
     };
   }
@@ -176,10 +175,7 @@ export class GoldService {
         'price_per_gram_cents',
       );
     } else {
-      pricePerGramCents = derivePricePerGramCents(
-        amountPaidCents,
-        weightGrams,
-      );
+      pricePerGramCents = derivePricePerGramCents(amountPaidCents, weightGrams);
       if (pricePerGramCents < 1) {
         throw new BadRequestException(
           'Derived price_per_gram_cents must be at least 1.',
@@ -250,9 +246,7 @@ export class GoldService {
     }
     if (input.notes !== undefined) {
       row.notes =
-        input.notes === null || input.notes === ''
-          ? null
-          : input.notes.trim();
+        input.notes === null || input.notes === '' ? null : input.notes.trim();
     }
 
     const saved = await this.purchasesRepo.save(row);
@@ -377,7 +371,9 @@ export class GoldService {
     try {
       const mg = gramsToMilligrams(trimmed);
       if (mg <= 0n) {
-        throw new BadRequestException('weight_grams must be greater than zero.');
+        throw new BadRequestException(
+          'weight_grams must be greater than zero.',
+        );
       }
       // Normalize to scale 3 for storage consistency.
       const whole = mg / 1000n;

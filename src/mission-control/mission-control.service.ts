@@ -330,7 +330,9 @@ export class MissionControlService {
       where: { userId, id: In(input.ordered_ids) },
     });
     if (rows.length !== input.ordered_ids.length) {
-      throw new BadRequestException('One or more debt priorities were not found.');
+      throw new BadRequestException(
+        'One or more debt priorities were not found.',
+      );
     }
     const byId = new Map(rows.map((r) => [r.id, r]));
     input.ordered_ids.forEach((id, index) => {
@@ -375,10 +377,7 @@ export class MissionControlService {
     await this.debtPriorityRepo.save(row);
 
     if (row.status === 'PAID_OFF') {
-      await this.recomputeRanksAndMissions(
-        userId,
-        row.priorityMethod as DebtPriorityMethod,
-      );
+      await this.recomputeRanksAndMissions(userId, row.priorityMethod);
     } else {
       await this.syncMissionsFromDebts(userId);
     }
@@ -414,10 +413,7 @@ export class MissionControlService {
         notes: null,
       }),
     );
-    await this.recomputeRanksAndMissions(
-      userId,
-      settings.priorityMethod as DebtPriorityMethod,
-    );
+    await this.recomputeRanksAndMissions(userId, settings.priorityMethod);
     return this.toDebtPriorityModel(
       await this.debtPriorityRepo.findOneOrFail({ where: { id: row.id } }),
     );
@@ -521,10 +517,7 @@ export class MissionControlService {
     method: DebtPriorityMethod,
   ): Promise<void> {
     const rows = await this.debtPriorityRepo.find({ where: { userId } });
-    const ordered = sortDebtsByMethod(
-      rows.map(toDebtLike),
-      method,
-    );
+    const ordered = sortDebtsByMethod(rows.map(toDebtLike), method);
     const byId = new Map(rows.map((r) => [r.id, r]));
     ordered.forEach((item, index) => {
       const row = byId.get(item.id)!;
@@ -1181,7 +1174,9 @@ export class MissionControlService {
       0,
       0,
     );
-    if (candidate < new Date(from.getFullYear(), from.getMonth(), from.getDate())) {
+    if (
+      candidate < new Date(from.getFullYear(), from.getMonth(), from.getDate())
+    ) {
       candidate = new Date(
         from.getFullYear(),
         from.getMonth() + 1,

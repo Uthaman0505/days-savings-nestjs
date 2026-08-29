@@ -80,7 +80,10 @@ export function computeHealthScore(input: {
   const savingsRatio = input.savingsCents / income;
   const savingsScore = Math.min(100, savingsRatio * 100 * 2);
 
-  const onTimeScore = Math.min(100, Math.max(0, input.onTimePaymentRatio * 100));
+  const onTimeScore = Math.min(
+    100,
+    Math.max(0, input.onTimePaymentRatio * 100),
+  );
   const budgetScore = Math.min(
     100,
     Math.max(0, input.budgetPerformanceRatio * 100),
@@ -199,7 +202,9 @@ function simulate(
     let monthPayment = 0;
 
     for (const d of active) {
-      const interest = Math.round(d.outstandingCents * (d.interestRate / 100 / 12));
+      const interest = Math.round(
+        d.outstandingCents * (d.interestRate / 100 / 12),
+      );
       d.outstandingCents += interest;
       monthInterest += interest;
       totalInterest += interest;
@@ -229,7 +234,10 @@ function simulate(
       monthPayment += pay;
     }
 
-    const remaining = debts.reduce((s, d) => s + Math.max(0, d.outstandingCents), 0);
+    const remaining = debts.reduce(
+      (s, d) => s + Math.max(0, d.outstandingCents),
+      0,
+    );
     months.push({
       monthKey: addMonthKey(now, month - 1),
       debtRemainingCents: remaining,

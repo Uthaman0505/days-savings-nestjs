@@ -68,9 +68,7 @@ export class MissionControlResolver {
 
   @Query(() => [DebtPriorityModel], { name: 'debtPriorities' })
   @UseGuards(JwtAuthGuard)
-  debtPriorities(
-    @CurrentUser() user: JwtUser,
-  ): Promise<DebtPriorityModel[]> {
+  debtPriorities(@CurrentUser() user: JwtUser): Promise<DebtPriorityModel[]> {
     return this.missionControlService.listDebtPriorities(user.id);
   }
 
@@ -135,8 +133,9 @@ export class MissionControlResolver {
   async projectionSettings(
     @CurrentUser() user: JwtUser,
   ): Promise<ProjectionSettingsModel> {
-    const row =
-      await this.missionControlService.getOrCreateProjectionSettings(user.id);
+    const row = await this.missionControlService.getOrCreateProjectionSettings(
+      user.id,
+    );
     return {
       id: row.id,
       userId: row.userId,

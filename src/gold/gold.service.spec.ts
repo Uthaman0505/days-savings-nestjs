@@ -25,9 +25,7 @@ describe('GoldService', () => {
 
   const now = new Date('2026-08-29T00:00:00.000Z');
 
-  const purchase = (
-    overrides: Partial<GoldPurchase> = {},
-  ): GoldPurchase =>
+  const purchase = (overrides: Partial<GoldPurchase> = {}): GoldPurchase =>
     ({
       id: 'gp-1',
       userId: 'user-a',
@@ -180,11 +178,18 @@ describe('GoldService', () => {
 
     it('Test D — soft-deleted purchase excluded from totals', async () => {
       purchasesRepo.find.mockResolvedValue([
-        purchase({ id: 'active', weightGrams: '10.000', amountPaidCents: 500000 }),
+        purchase({
+          id: 'active',
+          weightGrams: '10.000',
+          amountPaidCents: 500000,
+        }),
       ]);
       // find only returns isActive:true in service where-clause; inactive not returned.
       pricesRepo.findOne.mockResolvedValue(
-        price({ pgBuyPricePerGramCents: 52000, pgSellPricePerGramCents: 54000 }),
+        price({
+          pgBuyPricePerGramCents: 52000,
+          pgSellPricePerGramCents: 54000,
+        }),
       );
 
       const dash = await service.getDashboard('user-a');
