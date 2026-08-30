@@ -42,6 +42,8 @@ import { MonthlySnapshot } from '../mission-control/monthly-snapshot.entity';
 import { ProjectionSettings } from '../mission-control/projection-settings.entity';
 import { GoldDocument } from '../gold/gold-document.entity';
 import { GoldExtractionItem } from '../gold/gold-extraction-item.entity';
+import { GoldPriceCapture } from '../gold/gold-price-capture.entity';
+import { GoldPriceScreenshot } from '../gold/gold-price-screenshot.entity';
 import { GoldPurchase } from '../gold/gold-purchase.entity';
 import { GoldPrice } from '../gold/gold-price.entity';
 
@@ -92,4 +94,6 @@ export const entities = [
   GoldPrice,
   GoldDocument,
   GoldExtractionItem,
+  GoldPriceCapture,
+  GoldPriceScreenshot,
 ];

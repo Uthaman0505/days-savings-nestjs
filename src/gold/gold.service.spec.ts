@@ -18,9 +18,11 @@ describe('GoldService', () => {
     save: jest.Mock;
   };
   let pricesRepo: {
+    find: jest.Mock;
     findOne: jest.Mock;
     create: jest.Mock;
     save: jest.Mock;
+    createQueryBuilder: jest.Mock;
   };
 
   const now = new Date('2026-08-29T00:00:00.000Z');
@@ -69,6 +71,7 @@ describe('GoldService', () => {
       })),
     };
     pricesRepo = {
+      find: jest.fn().mockResolvedValue([]),
       findOne: jest.fn(),
       create: jest.fn((x: Partial<GoldPrice>) => x as GoldPrice),
       save: jest.fn(async (x: GoldPrice) => ({
@@ -76,6 +79,13 @@ describe('GoldService', () => {
         id: x.id ?? 'price-new',
         createdAt: x.createdAt ?? now,
         updatedAt: now,
+      })),
+      createQueryBuilder: jest.fn(() => ({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn(async () => pricesRepo.findOne()),
       })),
     };
 

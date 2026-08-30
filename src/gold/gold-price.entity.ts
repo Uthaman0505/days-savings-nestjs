@@ -6,7 +6,6 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
-  Unique,
   UpdateDateColumn,
 } from 'typeorm';
 import { User } from '../user/user.entity';
@@ -22,9 +21,9 @@ export type GoldPriceSource = 'MANUAL' | 'SCREENSHOT' | 'API';
  * Portfolio valuation MUST use PG BUY.
  */
 @Entity('gold_prices')
-@Unique('uq_gold_prices_user_date_source', ['userId', 'priceDate', 'source'])
 @Index('idx_gold_prices_user_id', ['userId'])
 @Index('idx_gold_prices_user_price_date', ['userId', 'priceDate'])
+@Index('idx_gold_prices_user_captured_at', ['userId', 'capturedPriceAt'])
 export class GoldPrice {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -58,6 +57,10 @@ export class GoldPrice {
 
   @Column({ type: 'text', nullable: true })
   notes: string | null;
+
+  /** Public Gold "Prices last updated on …" for screenshot-derived rows. */
+  @Column({ name: 'captured_price_at', type: 'timestamptz', nullable: true })
+  capturedPriceAt: Date | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
