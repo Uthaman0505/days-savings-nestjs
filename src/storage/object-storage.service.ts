@@ -6,6 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import {
   DeleteObjectCommand,
+  HeadObjectCommand,
   GetObjectCommand,
   type GetObjectCommandOutput,
   PutObjectCommand,
@@ -107,6 +108,21 @@ export class ObjectStorageService {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     }
     return Buffer.concat(chunks);
+  }
+
+  /** Returns false when the object key is missing (does not throw). */
+  async objectExists(key: string): Promise<boolean> {
+    try {
+      await this.s3.send(
+        new HeadObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+        }),
+      );
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async deleteObject(key: string): Promise<void> {

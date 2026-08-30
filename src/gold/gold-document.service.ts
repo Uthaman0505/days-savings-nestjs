@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from 'crypto';
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -31,6 +30,7 @@ type UploadDocumentFile = {
 export type GoldDocumentUploadResult = {
   document: GoldDocumentModel;
   duplicate: boolean;
+  restored: boolean;
 };
 
 const UPLOADED_STATUS = 'UPLOADED';
@@ -60,14 +60,21 @@ export class GoldDocumentService {
     );
     const sha256Hash = createHash('sha256').update(file.buffer).digest('hex');
 
-    const existing = await this.documentsRepo.findOne({
-      where: { userId, sha256Hash },
-    });
-    if (existing) {
-      return {
-        document: this.toModel(existing, undefined, null),
-        duplicate: true,
-      };
+    const existing = await this.findByUserAndHash(userId, sha256Hash);
+    if (existing?.isActive !== false) {
+      if (existing) {
+        const counts = await this.extractionService.countItemsForDocuments(
+          userId,
+          [existing.id],
+        );
+        return {
+          document: this.toModel(existing, counts.get(existing.id), null),
+          duplicate: true,
+          restored: false,
+        };
+      }
+    } else if (existing) {
+      return this.restoreDocument(userId, existing, file, contentType);
     }
 
     const documentId = randomUUID();
@@ -96,6 +103,7 @@ export class GoldDocumentService {
       storageKey,
       sha256Hash,
       extractionStatus: UPLOADED_STATUS,
+      isActive: true,
     });
 
     try {
@@ -104,27 +112,46 @@ export class GoldDocumentService {
       return {
         document: this.toModel(saved, undefined, null),
         duplicate: false,
+        restored: false,
       };
     } catch (err) {
       await this.storage.deleteObject(storageKey);
       if (this.isUniqueViolation(err)) {
-        const duplicate = await this.documentsRepo.findOne({
-          where: { userId, sha256Hash },
-        });
-        if (duplicate) {
-          return {
-            document: this.toModel(duplicate, undefined, null),
-            duplicate: true,
-          };
+        const duplicate = await this.findByUserAndHash(userId, sha256Hash);
+        if (duplicate?.isActive !== false) {
+          if (duplicate) {
+            return {
+              document: this.toModel(duplicate, undefined, null),
+              duplicate: true,
+              restored: false,
+            };
+          }
+        } else if (duplicate) {
+          return this.restoreDocument(userId, duplicate, file, contentType);
         }
       }
       throw err;
     }
   }
 
+  async deleteDocument(userId: string, documentId: string): Promise<boolean> {
+    const row = await this.documentsRepo.findOne({
+      where: { id: documentId, userId },
+    });
+    if (!row) {
+      throw new NotFoundException('Gold document not found.');
+    }
+    if (!row.isActive) {
+      return true;
+    }
+    row.isActive = false;
+    await this.documentsRepo.save(row);
+    return true;
+  }
+
   async findMyDocuments(userId: string): Promise<GoldDocumentModel[]> {
     const rows = await this.documentsRepo.find({
-      where: { userId },
+      where: { userId, isActive: true },
       order: { createdAt: 'DESC' },
     });
     const counts = await this.extractionService.countItemsForDocuments(
@@ -155,9 +182,9 @@ export class GoldDocumentService {
     res: Response,
   ): Promise<void> {
     const row = await this.documentsRepo.findOne({
-      where: { id: documentId },
+      where: { id: documentId, userId, isActive: true },
     });
-    if (!row || row.userId !== userId) {
+    if (!row) {
       res.status(404).send('Document not found');
       return;
     }
@@ -171,18 +198,90 @@ export class GoldDocumentService {
     }
   }
 
+  private async restoreDocument(
+    userId: string,
+    existing: GoldDocument,
+    file: UploadDocumentFile,
+    contentType: string,
+  ): Promise<GoldDocumentUploadResult> {
+    let storageKey = existing.storageKey;
+    const objectExists = await this.storage.objectExists(existing.storageKey);
+    if (!objectExists) {
+      const ext = extensionFromMime(contentType);
+      storageKey = `gold/${userId}/${existing.id}/${Date.now()}-${randomUUID()}.${ext}`;
+      await this.storage.putObject({
+        key: storageKey,
+        body: file.buffer,
+        contentType,
+      });
+    }
+
+    const counts = await this.extractionService.countItemsForDocuments(userId, [
+      existing.id,
+    ]);
+    const itemCounts = counts.get(existing.id);
+    const extractedItemCount = itemCounts?.extractedItemCount ?? 0;
+    const extractionStatus = this.normalizeStatusOnRestore(
+      existing.extractionStatus,
+      extractedItemCount,
+    );
+
+    existing.isActive = true;
+    existing.storageKey = storageKey;
+    existing.mimeType = contentType;
+    existing.fileSizeBytes = file.size;
+    existing.extractionStatus = extractionStatus;
+
+    const saved = await this.documentsRepo.save(existing);
+
+    if (extractionStatus === UPLOADED_STATUS && extractedItemCount === 0) {
+      this.scheduleExtraction(userId, saved.id);
+    }
+
+    const items =
+      extractedItemCount > 0
+        ? await this.extractionService.findItemsByDocumentId(userId, saved.id)
+        : null;
+
+    return {
+      document: this.toModel(saved, itemCounts, items),
+      duplicate: false,
+      restored: true,
+    };
+  }
+
+  /**
+   * Stale EXTRACTING rows cannot resume a background job after soft-delete.
+   * Prefer EXTRACTED when items exist; otherwise UPLOADED for a safe retry path.
+   */
+  private normalizeStatusOnRestore(
+    status: string,
+    extractedItemCount: number,
+  ): string {
+    if (status === 'EXTRACTING') {
+      return extractedItemCount > 0 ? 'EXTRACTED' : UPLOADED_STATUS;
+    }
+    return status;
+  }
+
+  private async findByUserAndHash(
+    userId: string,
+    sha256Hash: string,
+  ): Promise<GoldDocument | null> {
+    return this.documentsRepo.findOne({
+      where: { userId, sha256Hash },
+    });
+  }
+
   private async requireOwnedDocument(
     userId: string,
     documentId: string,
   ): Promise<GoldDocument> {
     const row = await this.documentsRepo.findOne({
-      where: { id: documentId },
+      where: { id: documentId, userId, isActive: true },
     });
     if (!row) {
       throw new NotFoundException('Gold document not found.');
-    }
-    if (row.userId !== userId) {
-      throw new ForbiddenException('You do not own this gold document.');
     }
     return row;
   }

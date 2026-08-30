@@ -102,6 +102,7 @@ describe('GoldExtractionService', () => {
       rawExtract: null,
       pageCount: null,
       confirmedAt: null,
+      isActive: true,
       createdAt: now,
       updatedAt: now,
       ...overrides,
@@ -274,11 +275,11 @@ describe('GoldExtractionService', () => {
   });
 
   it('rejects cross-user document processing', async () => {
-    documentsRepo.findOne.mockResolvedValue(document({ userId: 'user-a' }));
+    documentsRepo.findOne.mockResolvedValue(null);
 
     await expect(
       service.processStubExtraction('user-b', 'doc-1', [MULTI_ROW_FIXTURE[0]]),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('rejects missing document', async () => {
