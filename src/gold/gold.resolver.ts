@@ -3,8 +3,9 @@ import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { JwtUser } from '../auth/jwt.strategy';
-import { CreateGoldPurchaseInput } from './dto/create-gold-purchase.input';
 import { ConfirmGoldExtractionItemInput } from './dto/confirm-gold-extraction-item.input';
+import { CreateGoldPurchaseInput } from './dto/create-gold-purchase.input';
+import { DeleteGoldDocumentInput } from './dto/delete-gold-document.input';
 import { DeleteGoldPurchaseInput } from './dto/delete-gold-purchase.input';
 import { GoldPurchaseFilterInput } from './dto/gold-purchase-filter.input';
 import { RejectGoldExtractionItemInput } from './dto/reject-gold-extraction-item.input';
@@ -123,6 +124,15 @@ export class GoldResolver {
   ): Promise<GoldDocumentModel> {
     await this.goldExtractionService.retryDocumentExtraction(user.id, id);
     return this.goldDocumentService.findDocumentById(user.id, id);
+  }
+
+  @Mutation(() => Boolean, { name: 'deleteGoldDocument' })
+  @UseGuards(JwtAuthGuard)
+  deleteGoldDocument(
+    @CurrentUser() user: JwtUser,
+    @Args('input') input: DeleteGoldDocumentInput,
+  ): Promise<boolean> {
+    return this.goldDocumentService.deleteDocument(user.id, input.id);
   }
 
   @Mutation(() => ConfirmGoldExtractionItemResultModel, {

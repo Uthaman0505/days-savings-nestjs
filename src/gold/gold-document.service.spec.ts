@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ForbiddenException,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
@@ -31,10 +30,12 @@ describe('GoldDocumentService', () => {
     putObject: jest.Mock;
     deleteObject: jest.Mock;
     streamObjectToResponse: jest.Mock;
+    objectExists: jest.Mock;
   };
   let extractionService: {
     countItemsForDocuments: jest.Mock;
     findItemsByDocumentId: jest.Mock;
+    processDocumentExtraction: jest.Mock;
   };
 
   const now = new Date('2026-08-30T00:00:00.000Z');
@@ -54,6 +55,7 @@ describe('GoldDocumentService', () => {
       rawExtract: null,
       pageCount: null,
       confirmedAt: null,
+      isActive: true,
       createdAt: now,
       updatedAt: now,
       ...overrides,
@@ -74,6 +76,7 @@ describe('GoldDocumentService', () => {
       putObject: jest.fn().mockResolvedValue(undefined),
       deleteObject: jest.fn().mockResolvedValue(undefined),
       streamObjectToResponse: jest.fn().mockResolvedValue(true),
+      objectExists: jest.fn().mockResolvedValue(true),
     };
     extractionService = {
       countItemsForDocuments: jest.fn().mockResolvedValue(new Map()),
@@ -132,6 +135,7 @@ describe('GoldDocumentService', () => {
     );
 
     expect(result.duplicate).toBe(false);
+    expect(result.restored).toBe(false);
     expect(result.document.extractionStatus).toBe('UPLOADED');
     expect(result.document.originalFileName).toBe('receipt.png');
     expect(result.document.fileUrl).toMatch(
@@ -149,6 +153,7 @@ describe('GoldDocumentService', () => {
         userId: 'user-a',
         mimeType: 'image/png',
         extractionStatus: 'UPLOADED',
+        isActive: true,
         sha256Hash: expect.any(String),
       }),
     );
@@ -164,8 +169,166 @@ describe('GoldDocumentService', () => {
     );
 
     expect(result.duplicate).toBe(true);
+    expect(result.restored).toBe(false);
     expect(result.document.id).toBe('doc-1');
     expect(storage.putObject).not.toHaveBeenCalled();
+    expect(documentsRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('restores soft-deleted document on re-upload with same bytes', async () => {
+    const deleted = document({
+      isActive: false,
+      extractionStatus: 'EXTRACTED',
+    });
+    documentsRepo.findOne.mockResolvedValue(deleted);
+    extractionService.countItemsForDocuments.mockResolvedValue(
+      new Map([
+        [
+          'doc-1',
+          {
+            extractedItemCount: 2,
+            confirmedItemCount: 1,
+            rejectedItemCount: 0,
+            pendingItemCount: 1,
+          },
+        ],
+      ]),
+    );
+    extractionService.findItemsByDocumentId.mockResolvedValue([
+      { id: 'item-1', status: 'CONFIRMED', gold_purchase_id: 'gp-1' },
+    ]);
+
+    const result = await service.uploadDocument(
+      'user-a',
+      uploadFile(PNG_BYTES, 'image/png'),
+    );
+
+    expect(result.duplicate).toBe(false);
+    expect(result.restored).toBe(true);
+    expect(result.document.id).toBe('doc-1');
+    expect(storage.objectExists).toHaveBeenCalledWith(deleted.storageKey);
+    expect(storage.putObject).not.toHaveBeenCalled();
+    expect(documentsRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'doc-1',
+        isActive: true,
+        extractionStatus: 'EXTRACTED',
+        originalFileName: 'receipt.png',
+      }),
+    );
+    expect(extractionService.processDocumentExtraction).not.toHaveBeenCalled();
+  });
+
+  it('re-uploads S3 object when soft-deleted document storage is missing', async () => {
+    const deleted = document({ isActive: false });
+    documentsRepo.findOne.mockResolvedValue(deleted);
+    storage.objectExists.mockResolvedValue(false);
+
+    const result = await service.uploadDocument(
+      'user-a',
+      uploadFile(PNG_BYTES, 'image/png'),
+    );
+
+    expect(result.restored).toBe(true);
+    expect(storage.putObject).toHaveBeenCalledTimes(1);
+    expect(storage.putObject.mock.calls[0][0].key).toMatch(
+      /^gold\/user-a\/doc-1\//,
+    );
+    expect(documentsRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'doc-1',
+        isActive: true,
+        storageKey: expect.stringMatching(/^gold\/user-a\/doc-1\//),
+      }),
+    );
+  });
+
+  it('normalizes stale EXTRACTING status to EXTRACTED when items exist on restore', async () => {
+    const deleted = document({
+      isActive: false,
+      extractionStatus: 'EXTRACTING',
+    });
+    documentsRepo.findOne.mockResolvedValue(deleted);
+    extractionService.countItemsForDocuments.mockResolvedValue(
+      new Map([
+        [
+          'doc-1',
+          {
+            extractedItemCount: 1,
+            confirmedItemCount: 0,
+            rejectedItemCount: 0,
+            pendingItemCount: 1,
+          },
+        ],
+      ]),
+    );
+
+    const result = await service.uploadDocument(
+      'user-a',
+      uploadFile(PNG_BYTES, 'image/png'),
+    );
+
+    expect(result.restored).toBe(true);
+    expect(result.document.extractionStatus).toBe('EXTRACTED');
+  });
+
+  it('normalizes stale EXTRACTING status to UPLOADED when no items exist on restore', async () => {
+    const deleted = document({
+      isActive: false,
+      extractionStatus: 'EXTRACTING',
+    });
+    documentsRepo.findOne.mockResolvedValue(deleted);
+
+    const result = await service.uploadDocument(
+      'user-a',
+      uploadFile(PNG_BYTES, 'image/png'),
+    );
+
+    expect(result.restored).toBe(true);
+    expect(result.document.extractionStatus).toBe('UPLOADED');
+    expect(extractionService.processDocumentExtraction).toHaveBeenCalledWith(
+      'user-a',
+      'doc-1',
+    );
+  });
+
+  it('preserves FAILED extraction status on restore', async () => {
+    const deleted = document({
+      isActive: false,
+      extractionStatus: 'FAILED',
+      extractionError: 'NO_PURCHASE_ROWS_FOUND',
+    });
+    documentsRepo.findOne.mockResolvedValue(deleted);
+
+    const result = await service.uploadDocument(
+      'user-a',
+      uploadFile(PNG_BYTES, 'image/png'),
+    );
+
+    expect(result.restored).toBe(true);
+    expect(result.document.extractionStatus).toBe('FAILED');
+    expect(extractionService.processDocumentExtraction).not.toHaveBeenCalled();
+  });
+
+  it('soft-deletes document without removing S3 object', async () => {
+    const active = document();
+    documentsRepo.findOne.mockResolvedValue(active);
+
+    const ok = await service.deleteDocument('user-a', 'doc-1');
+
+    expect(ok).toBe(true);
+    expect(documentsRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'doc-1', isActive: false }),
+    );
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+  });
+
+  it('delete is idempotent for already soft-deleted documents', async () => {
+    documentsRepo.findOne.mockResolvedValue(document({ isActive: false }));
+
+    const ok = await service.deleteDocument('user-a', 'doc-1');
+
+    expect(ok).toBe(true);
     expect(documentsRepo.save).not.toHaveBeenCalled();
   });
 
@@ -206,7 +369,47 @@ describe('GoldDocumentService', () => {
     );
 
     expect(result.duplicate).toBe(true);
+    expect(result.restored).toBe(false);
     expect(result.document.id).toBe('doc-1');
+    expect(storage.deleteObject).toHaveBeenCalledTimes(1);
+  });
+
+  it('handles unique-constraint race by restoring soft-deleted row', async () => {
+    const deleted = document({
+      isActive: false,
+      extractionStatus: 'EXTRACTED',
+    });
+    documentsRepo.findOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(deleted);
+    documentsRepo.save
+      .mockRejectedValueOnce(
+        Object.assign(new QueryFailedError('', [], new Error()), {
+          driverError: { code: '23505' },
+        }),
+      )
+      .mockImplementationOnce(async (row: GoldDocument) => row);
+    extractionService.countItemsForDocuments.mockResolvedValue(
+      new Map([
+        [
+          'doc-1',
+          {
+            extractedItemCount: 1,
+            confirmedItemCount: 0,
+            rejectedItemCount: 0,
+            pendingItemCount: 1,
+          },
+        ],
+      ]),
+    );
+
+    const result = await service.uploadDocument(
+      'user-a',
+      uploadFile(PNG_BYTES, 'image/png'),
+    );
+
+    expect(result.restored).toBe(true);
+    expect(result.duplicate).toBe(false);
     expect(storage.deleteObject).toHaveBeenCalledTimes(1);
   });
 
@@ -270,12 +473,15 @@ describe('GoldDocumentService', () => {
     ).rejects.toThrow('Document too large');
   });
 
-  it('scopes metadata lookup to owner', async () => {
-    documentsRepo.findOne.mockResolvedValue(document({ userId: 'user-a' }));
+  it('scopes metadata lookup to owner via active filter', async () => {
+    documentsRepo.findOne.mockResolvedValue(null);
 
     await expect(
       service.findDocumentById('user-b', 'doc-1'),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(documentsRepo.findOne).toHaveBeenCalledWith({
+      where: { id: 'doc-1', userId: 'user-b', isActive: true },
+    });
   });
 
   it('returns not found for missing metadata', async () => {
@@ -286,7 +492,7 @@ describe('GoldDocumentService', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('lists documents newest first for the authenticated user', async () => {
+  it('lists only active documents newest first for the authenticated user', async () => {
     documentsRepo.find.mockResolvedValue([
       document({
         id: 'doc-2',
@@ -298,14 +504,14 @@ describe('GoldDocumentService', () => {
     const rows = await service.findMyDocuments('user-a');
 
     expect(documentsRepo.find).toHaveBeenCalledWith({
-      where: { userId: 'user-a' },
+      where: { userId: 'user-a', isActive: true },
       order: { createdAt: 'DESC' },
     });
     expect(rows.map((row) => row.id)).toEqual(['doc-2', 'doc-1']);
   });
 
-  it('streams file only for owner and hides cross-user existence', async () => {
-    documentsRepo.findOne.mockResolvedValue(document({ userId: 'user-a' }));
+  it('streams file only for active owner documents', async () => {
+    documentsRepo.findOne.mockResolvedValue(null);
     const res = {
       status: jest.fn().mockReturnThis(),
       send: jest.fn(),
@@ -316,5 +522,8 @@ describe('GoldDocumentService', () => {
 
     expect(res.status).toHaveBeenCalledWith(404);
     expect(storage.streamObjectToResponse).not.toHaveBeenCalled();
+    expect(documentsRepo.findOne).toHaveBeenCalledWith({
+      where: { id: 'doc-1', userId: 'user-b', isActive: true },
+    });
   });
 });

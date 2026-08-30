@@ -544,12 +544,11 @@ export class GoldExtractionService {
     userId: string,
     documentId: string,
   ): Promise<GoldDocument> {
-    const row = await this.documentsRepo.findOne({ where: { id: documentId } });
+    const row = await this.documentsRepo.findOne({
+      where: { id: documentId, userId, isActive: true },
+    });
     if (!row) {
       throw new NotFoundException('Gold document not found.');
-    }
-    if (row.userId !== userId) {
-      throw new ForbiddenException('You do not own this gold document.');
     }
     return row;
   }
