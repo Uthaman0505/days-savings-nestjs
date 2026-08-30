@@ -109,7 +109,7 @@ describe('GoldService', () => {
 
       const dash = await service.getDashboard('user-a');
 
-      expect(dash.totalGrams).toBe('0.000');
+      expect(dash.totalGrams).toBe('0.0000');
       expect(dash.totalInvestedCents).toBe(0);
       expect(dash.averageCostPerGramCents).toBe(0);
       expect(dash.currentValueCents).toBe(0);
@@ -134,7 +134,7 @@ describe('GoldService', () => {
 
       const dash = await service.getDashboard('user-a');
 
-      expect(dash.totalGrams).toBe('15.000');
+      expect(dash.totalGrams).toBe('15.0000');
       expect(dash.totalInvestedCents).toBe(740000);
       expect(dash.averageCostPerGramCents).toBe(49333);
       expect(dash.hasPrice).toBe(false);
@@ -163,7 +163,7 @@ describe('GoldService', () => {
 
       const dash = await service.getDashboard('user-a');
 
-      expect(dash.totalGrams).toBe('15.000');
+      expect(dash.totalGrams).toBe('15.0000');
       expect(dash.totalInvestedCents).toBe(740000);
       expect(dash.averageCostPerGramCents).toBe(49333);
       expect(dash.hasPrice).toBe(true);
@@ -194,7 +194,7 @@ describe('GoldService', () => {
 
       const dash = await service.getDashboard('user-a');
       expect(dash.purchaseCount).toBe(1);
-      expect(dash.totalGrams).toBe('10.000');
+      expect(dash.totalGrams).toBe('10.0000');
       expect(dash.totalInvestedCents).toBe(500000);
     });
   });
@@ -298,7 +298,7 @@ describe('GoldService', () => {
 
       expect(purchasesRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          weightGrams: '10.000',
+          weightGrams: '10.0000',
           amountPaidCents: 500000,
           pricePerGramCents: 50000,
           source: 'MANUAL',

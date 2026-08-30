@@ -1,33 +1,54 @@
 /**
  * Decimal-safe helpers for gold weight (grams) × money (integer cents).
- * Uses milligram integers + BigInt half-up rounding — no IEEE float money math.
+ * Uses 0.0001g integer units (BigInt) + half-up rounding — no IEEE float money math.
  */
 
-const WEIGHT_RE = /^(?:0|[1-9]\d*)(?:\.\d{1,3})?$/;
+/** 1 gram = 10_000 units (0.0001 g resolution). */
+export const GRAM_SCALE = 10000n;
 
-/** Parse grams string to milligrams (integer). "10.000" → 10000 */
-export function gramsToMilligrams(weightGrams: string): bigint {
+const WEIGHT_RE = /^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/;
+
+/** Parse grams string to 0.0001g integer units. "1.1686" → 11686n */
+export function parseGramsToUnits(weightGrams: string): bigint {
   const trimmed = weightGrams.trim();
   if (!WEIGHT_RE.test(trimmed)) {
     throw new Error('INVALID_WEIGHT_FORMAT');
   }
   const [whole, frac = ''] = trimmed.split('.');
-  const fracPadded = (frac + '000').slice(0, 3);
-  const mg = BigInt(whole) * 1000n + BigInt(fracPadded);
-  if (mg <= 0n) {
+  const fracPadded = (frac + '0000').slice(0, 4);
+  const units = BigInt(whole) * GRAM_SCALE + BigInt(fracPadded);
+  if (units <= 0n) {
     throw new Error('INVALID_WEIGHT_POSITIVE');
   }
-  return mg;
+  return units;
 }
 
-/** Format milligrams as numeric(12,3) string. 15000 → "15.000" */
-export function milligramsToGramsString(mg: bigint): string {
-  const neg = mg < 0n;
-  const abs = neg ? -mg : mg;
-  const whole = abs / 1000n;
-  const frac = abs % 1000n;
-  const s = `${whole.toString()}.${frac.toString().padStart(3, '0')}`;
+/** Format integer units as numeric(12,4) string. 11686n → "1.1686" */
+export function formatGramUnits(units: bigint): string {
+  const neg = units < 0n;
+  const abs = neg ? -units : units;
+  const whole = abs / GRAM_SCALE;
+  const frac = abs % GRAM_SCALE;
+  const s = `${whole.toString()}.${frac.toString().padStart(4, '0')}`;
   return neg ? `-${s}` : s;
+}
+
+/**
+ * Normalize weight from DB/API (string or driver number) to canonical 4dp string.
+ * Handles legacy 3dp values and float artifacts from numeric drivers.
+ */
+export function normalizeStoredWeightGrams(raw: string | number): string {
+  if (typeof raw === 'number') {
+    if (!Number.isFinite(raw) || raw <= 0) {
+      throw new Error('INVALID_WEIGHT_FORMAT');
+    }
+    return formatGramUnits(parseGramsToUnits(raw.toFixed(4)));
+  }
+  const trimmed = String(raw).trim();
+  if (!trimmed) {
+    throw new Error('INVALID_WEIGHT_FORMAT');
+  }
+  return formatGramUnits(parseGramsToUnits(trimmed));
 }
 
 /** Half-up division for non-negative BigInts. */
@@ -46,9 +67,8 @@ export function derivePricePerGramCents(
   amountPaidCents: number,
   weightGrams: string,
 ): number {
-  const mg = gramsToMilligrams(weightGrams);
-  // amount / (mg/1000) = amount * 1000 / mg
-  return Number(roundHalfUpDiv(BigInt(amountPaidCents) * 1000n, mg));
+  const units = parseGramsToUnits(weightGrams);
+  return Number(roundHalfUpDiv(BigInt(amountPaidCents) * GRAM_SCALE, units));
 }
 
 /** value_cents = round(weight_grams × price_per_gram_cents) */
@@ -56,17 +76,16 @@ export function valueCentsFromGramsAndUnitPrice(
   weightGrams: string,
   pricePerGramCents: number,
 ): number {
-  const mg = gramsToMilligrams(weightGrams);
-  // (mg/1000) * price = mg * price / 1000
-  return Number(roundHalfUpDiv(mg * BigInt(pricePerGramCents), 1000n));
+  const units = parseGramsToUnits(weightGrams);
+  return Number(roundHalfUpDiv(units * BigInt(pricePerGramCents), GRAM_SCALE));
 }
 
 export function sumGramsStrings(weights: string[]): string {
-  let totalMg = 0n;
+  let totalUnits = 0n;
   for (const w of weights) {
-    totalMg += gramsToMilligrams(w);
+    totalUnits += parseGramsToUnits(w);
   }
-  return milligramsToGramsString(totalMg);
+  return formatGramUnits(totalUnits);
 }
 
 /** average cost cents/g = round(total_invested / total_grams) */
@@ -77,14 +96,14 @@ export function averageCostPerGramCents(
   if (totalInvestedCents <= 0) {
     return 0;
   }
-  let mg: bigint;
+  let units: bigint;
   try {
-    mg = gramsToMilligrams(totalGrams);
+    units = parseGramsToUnits(totalGrams);
   } catch {
     return 0;
   }
-  if (mg === 0n) {
+  if (units === 0n) {
     return 0;
   }
-  return Number(roundHalfUpDiv(BigInt(totalInvestedCents) * 1000n, mg));
+  return Number(roundHalfUpDiv(BigInt(totalInvestedCents) * GRAM_SCALE, units));
 }
