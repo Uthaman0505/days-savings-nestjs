@@ -30,6 +30,7 @@ import {
 import { GoldExtractionItemModel } from './models/gold-extraction-item.model';
 import { ConfirmGoldExtractionItemResultModel } from './models/confirm-gold-extraction-item.model';
 import { GoldService } from './gold.service';
+import { GoldPurchase } from './gold-purchase.entity';
 import { ObjectStorageService } from '../storage/object-storage.service';
 
 export type StubExtractionCandidateInput = RawExtractionCandidate & {
@@ -371,6 +372,46 @@ export class GoldExtractionService {
     }
 
     return result;
+  }
+
+  /**
+   * Document lifecycle sync — only purchases linked via CONFIRMED extraction items
+   * on this document are affected. Manual purchases are never touched.
+   */
+  async setLinkedPurchasesActiveForDocument(
+    userId: string,
+    documentId: string,
+    isActive: boolean,
+    manager: EntityManager,
+  ): Promise<number> {
+    const items = await manager.find(GoldExtractionItem, {
+      where: {
+        goldDocumentId: documentId,
+        userId,
+        status: 'CONFIRMED',
+      },
+      select: ['goldPurchaseId'],
+    });
+
+    const purchaseIds = [
+      ...new Set(
+        items
+          .map((item) => item.goldPurchaseId)
+          .filter((id): id is string => id != null),
+      ),
+    ];
+
+    if (purchaseIds.length === 0) {
+      return 0;
+    }
+
+    const result = await manager.update(
+      GoldPurchase,
+      { userId, id: In(purchaseIds) },
+      { isActive },
+    );
+
+    return result.affected ?? purchaseIds.length;
   }
 
   private async extractCandidatesFromFile(

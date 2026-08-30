@@ -6,7 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { QueryFailedError } from 'typeorm';
+import { DataSource, QueryFailedError } from 'typeorm';
 import { ObjectStorageService } from '../storage/object-storage.service';
 import { GoldDocument } from './gold-document.entity';
 import { GoldDocumentService } from './gold-document.service';
@@ -26,6 +26,10 @@ describe('GoldDocumentService', () => {
     create: jest.Mock;
     save: jest.Mock;
   };
+  let transactionManager: {
+    findOne: jest.Mock;
+    save: jest.Mock;
+  };
   let storage: {
     putObject: jest.Mock;
     deleteObject: jest.Mock;
@@ -36,6 +40,7 @@ describe('GoldDocumentService', () => {
     countItemsForDocuments: jest.Mock;
     findItemsByDocumentId: jest.Mock;
     processDocumentExtraction: jest.Mock;
+    setLinkedPurchasesActiveForDocument: jest.Mock;
   };
 
   const now = new Date('2026-08-30T00:00:00.000Z');
@@ -62,6 +67,13 @@ describe('GoldDocumentService', () => {
     }) as GoldDocument;
 
   beforeEach(async () => {
+    transactionManager = {
+      findOne: jest.fn(),
+      save: jest.fn(async (entity: unknown, row: GoldDocument) => ({
+        ...row,
+        updatedAt: now,
+      })),
+    };
     documentsRepo = {
       find: jest.fn(),
       findOne: jest.fn(),
@@ -82,6 +94,7 @@ describe('GoldDocumentService', () => {
       countItemsForDocuments: jest.fn().mockResolvedValue(new Map()),
       findItemsByDocumentId: jest.fn().mockResolvedValue([]),
       processDocumentExtraction: jest.fn().mockResolvedValue(null),
+      setLinkedPurchasesActiveForDocument: jest.fn().mockResolvedValue(0),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -98,6 +111,15 @@ describe('GoldDocumentService', () => {
         {
           provide: GoldExtractionService,
           useValue: extractionService,
+        },
+        {
+          provide: DataSource,
+          useValue: {
+            transaction: jest.fn(
+              async (fn: (manager: typeof transactionManager) => unknown) =>
+                fn(transactionManager),
+            ),
+          },
         },
         {
           provide: ConfigService,
@@ -181,6 +203,7 @@ describe('GoldDocumentService', () => {
       extractionStatus: 'EXTRACTED',
     });
     documentsRepo.findOne.mockResolvedValue(deleted);
+    transactionManager.findOne.mockResolvedValue(deleted);
     extractionService.countItemsForDocuments.mockResolvedValue(
       new Map([
         [
@@ -208,7 +231,8 @@ describe('GoldDocumentService', () => {
     expect(result.document.id).toBe('doc-1');
     expect(storage.objectExists).toHaveBeenCalledWith(deleted.storageKey);
     expect(storage.putObject).not.toHaveBeenCalled();
-    expect(documentsRepo.save).toHaveBeenCalledWith(
+    expect(transactionManager.save).toHaveBeenCalledWith(
+      GoldDocument,
       expect.objectContaining({
         id: 'doc-1',
         isActive: true,
@@ -216,12 +240,16 @@ describe('GoldDocumentService', () => {
         originalFileName: 'receipt.png',
       }),
     );
+    expect(
+      extractionService.setLinkedPurchasesActiveForDocument,
+    ).toHaveBeenCalledWith('user-a', 'doc-1', true, transactionManager);
     expect(extractionService.processDocumentExtraction).not.toHaveBeenCalled();
   });
 
   it('re-uploads S3 object when soft-deleted document storage is missing', async () => {
     const deleted = document({ isActive: false });
     documentsRepo.findOne.mockResolvedValue(deleted);
+    transactionManager.findOne.mockResolvedValue(deleted);
     storage.objectExists.mockResolvedValue(false);
 
     const result = await service.uploadDocument(
@@ -234,7 +262,8 @@ describe('GoldDocumentService', () => {
     expect(storage.putObject.mock.calls[0][0].key).toMatch(
       /^gold\/user-a\/doc-1\//,
     );
-    expect(documentsRepo.save).toHaveBeenCalledWith(
+    expect(transactionManager.save).toHaveBeenCalledWith(
+      GoldDocument,
       expect.objectContaining({
         id: 'doc-1',
         isActive: true,
@@ -249,6 +278,7 @@ describe('GoldDocumentService', () => {
       extractionStatus: 'EXTRACTING',
     });
     documentsRepo.findOne.mockResolvedValue(deleted);
+    transactionManager.findOne.mockResolvedValue(deleted);
     extractionService.countItemsForDocuments.mockResolvedValue(
       new Map([
         [
@@ -278,6 +308,7 @@ describe('GoldDocumentService', () => {
       extractionStatus: 'EXTRACTING',
     });
     documentsRepo.findOne.mockResolvedValue(deleted);
+    transactionManager.findOne.mockResolvedValue(deleted);
 
     const result = await service.uploadDocument(
       'user-a',
@@ -299,6 +330,7 @@ describe('GoldDocumentService', () => {
       extractionError: 'NO_PURCHASE_ROWS_FOUND',
     });
     documentsRepo.findOne.mockResolvedValue(deleted);
+    transactionManager.findOne.mockResolvedValue(deleted);
 
     const result = await service.uploadDocument(
       'user-a',
@@ -310,26 +342,33 @@ describe('GoldDocumentService', () => {
     expect(extractionService.processDocumentExtraction).not.toHaveBeenCalled();
   });
 
-  it('soft-deletes document without removing S3 object', async () => {
+  it('soft-deletes document and deactivates linked purchases without removing S3 object', async () => {
     const active = document();
-    documentsRepo.findOne.mockResolvedValue(active);
+    transactionManager.findOne.mockResolvedValue(active);
 
     const ok = await service.deleteDocument('user-a', 'doc-1');
 
     expect(ok).toBe(true);
-    expect(documentsRepo.save).toHaveBeenCalledWith(
+    expect(transactionManager.save).toHaveBeenCalledWith(
+      GoldDocument,
       expect.objectContaining({ id: 'doc-1', isActive: false }),
     );
+    expect(
+      extractionService.setLinkedPurchasesActiveForDocument,
+    ).toHaveBeenCalledWith('user-a', 'doc-1', false, transactionManager);
     expect(storage.deleteObject).not.toHaveBeenCalled();
   });
 
   it('delete is idempotent for already soft-deleted documents', async () => {
-    documentsRepo.findOne.mockResolvedValue(document({ isActive: false }));
+    transactionManager.findOne.mockResolvedValue(document({ isActive: false }));
 
     const ok = await service.deleteDocument('user-a', 'doc-1');
 
     expect(ok).toBe(true);
-    expect(documentsRepo.save).not.toHaveBeenCalled();
+    expect(transactionManager.save).not.toHaveBeenCalled();
+    expect(
+      extractionService.setLinkedPurchasesActiveForDocument,
+    ).not.toHaveBeenCalled();
   });
 
   it('allows the same hash for different users', async () => {
@@ -382,6 +421,7 @@ describe('GoldDocumentService', () => {
     documentsRepo.findOne
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(deleted);
+    transactionManager.findOne.mockResolvedValue(deleted);
     documentsRepo.save
       .mockRejectedValueOnce(
         Object.assign(new QueryFailedError('', [], new Error()), {

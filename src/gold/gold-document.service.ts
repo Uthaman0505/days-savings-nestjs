@@ -8,7 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { Response } from 'express';
-import { QueryFailedError, Repository } from 'typeorm';
+import { DataSource, QueryFailedError, Repository } from 'typeorm';
 import {
   extensionFromMime,
   validateGoldDocumentContentType,
@@ -44,6 +44,7 @@ export class GoldDocumentService {
     private readonly documentsRepo: Repository<GoldDocument>,
     private readonly storage: ObjectStorageService,
     private readonly extractionService: GoldExtractionService,
+    private readonly dataSource: DataSource,
     configService: ConfigService,
   ) {
     this.publicAppUrl = configService.get<string>('PUBLIC_APP_URL')?.trim();
@@ -135,18 +136,26 @@ export class GoldDocumentService {
   }
 
   async deleteDocument(userId: string, documentId: string): Promise<boolean> {
-    const row = await this.documentsRepo.findOne({
-      where: { id: documentId, userId },
-    });
-    if (!row) {
-      throw new NotFoundException('Gold document not found.');
-    }
-    if (!row.isActive) {
+    return this.dataSource.transaction(async (manager) => {
+      const row = await manager.findOne(GoldDocument, {
+        where: { id: documentId, userId },
+      });
+      if (!row) {
+        throw new NotFoundException('Gold document not found.');
+      }
+      if (!row.isActive) {
+        return true;
+      }
+      row.isActive = false;
+      await manager.save(GoldDocument, row);
+      await this.extractionService.setLinkedPurchasesActiveForDocument(
+        userId,
+        documentId,
+        false,
+        manager,
+      );
       return true;
-    }
-    row.isActive = false;
-    await this.documentsRepo.save(row);
-    return true;
+    });
   }
 
   async findMyDocuments(userId: string): Promise<GoldDocumentModel[]> {
@@ -232,7 +241,27 @@ export class GoldDocumentService {
     existing.fileSizeBytes = file.size;
     existing.extractionStatus = extractionStatus;
 
-    const saved = await this.documentsRepo.save(existing);
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const row = await manager.findOne(GoldDocument, {
+        where: { id: existing.id, userId },
+      });
+      if (!row) {
+        throw new NotFoundException('Gold document not found.');
+      }
+      row.isActive = true;
+      row.storageKey = storageKey;
+      row.mimeType = contentType;
+      row.fileSizeBytes = file.size;
+      row.extractionStatus = extractionStatus;
+      const updated = await manager.save(GoldDocument, row);
+      await this.extractionService.setLinkedPurchasesActiveForDocument(
+        userId,
+        existing.id,
+        true,
+        manager,
+      );
+      return updated;
+    });
 
     if (extractionStatus === UPLOADED_STATUS && extractedItemCount === 0) {
       this.scheduleExtraction(userId, saved.id);
