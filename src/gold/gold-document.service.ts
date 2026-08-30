@@ -100,6 +100,7 @@ export class GoldDocumentService {
 
     try {
       const saved = await this.documentsRepo.save(entity);
+      this.scheduleExtraction(userId, saved.id);
       return {
         document: this.toModel(saved, undefined, null),
         duplicate: false,
@@ -255,6 +256,12 @@ export class GoldDocumentService {
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
+  }
+
+  private scheduleExtraction(userId: string, documentId: string): void {
+    void this.extractionService
+      .processDocumentExtraction(userId, documentId)
+      .catch(() => undefined);
   }
 
   private isUniqueViolation(err: unknown): boolean {

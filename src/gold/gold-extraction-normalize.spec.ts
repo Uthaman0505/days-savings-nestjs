@@ -79,6 +79,19 @@ describe('gold-extraction-normalize', () => {
     expect(result.referenceNumber).toBe('PG-A003');
   });
 
+  it('flags deliberate amount mismatch via integrity normalization', () => {
+    const result = normalizeExtractionCandidate({
+      purchaseDate: '2026-08-26',
+      weightGrams: '0.1529',
+      amountPaidCents: 12000,
+      pricePerGramCents: 65400,
+      referenceNumber: '21727607',
+    });
+
+    expect(result.validationWarnings).toContain('AMOUNT_PRICE_WEIGHT_MISMATCH');
+    expect(result.status).toBe('NEEDS_REVIEW');
+  });
+
   it('derives price per gram when amount and weight are valid', () => {
     const result = normalizeExtractionCandidate({
       purchaseDate: '2026-06-02',

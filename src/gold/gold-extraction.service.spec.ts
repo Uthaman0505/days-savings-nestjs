@@ -6,12 +6,28 @@ import {
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource, QueryRunner } from 'typeorm';
+import { ObjectStorageService } from '../storage/object-storage.service';
+import { PUBLIC_GOLD_PROFORMA_INVOICE_FIXTURE } from './extraction/fixtures/public-gold-proforma.fixture';
+import { extractTextFromPdfBuffer } from './extraction/pdf-text.extractor';
 import { GoldDocument } from './gold-document.entity';
 import { GoldExtractionItem } from './gold-extraction-item.entity';
 import { GoldExtractionService } from './gold-extraction.service';
 import { GoldService } from './gold.service';
 import { GoldPurchase } from './gold-purchase.entity';
 import { GoldPrice } from './gold-price.entity';
+
+jest.mock('./extraction/pdf-text.extractor', () => ({
+  extractTextFromPdfBuffer: jest.fn(),
+  PdfTextExtractionError: class PdfTextExtractionError extends Error {
+    constructor(public readonly code: string) {
+      super(code);
+    }
+  },
+}));
+
+const mockedExtractText = extractTextFromPdfBuffer as jest.MockedFunction<
+  typeof extractTextFromPdfBuffer
+>;
 
 const MULTI_ROW_FIXTURE = [
   {
@@ -45,6 +61,7 @@ describe('GoldExtractionService', () => {
     findOne: jest.Mock;
     count: jest.Mock;
     create: jest.Mock;
+    save: jest.Mock;
     createQueryBuilder: jest.Mock;
   };
   let queryRunner: {
@@ -57,9 +74,17 @@ describe('GoldExtractionService', () => {
       update: jest.Mock;
       delete: jest.Mock;
       save: jest.Mock;
+      findOne: jest.Mock;
+      getRepository: jest.Mock;
     };
   };
   let dataSource: { createQueryRunner: jest.Mock };
+  let storage: { getObjectBuffer: jest.Mock };
+  let goldService: {
+    createPurchaseEntity: jest.Mock;
+    findPurchaseById: jest.Mock;
+    findLogicalDuplicateWarnings: jest.Mock;
+  };
 
   const now = new Date('2026-08-30T00:00:00.000Z');
 
@@ -93,6 +118,11 @@ describe('GoldExtractionService', () => {
         update: jest.fn().mockResolvedValue(undefined),
         delete: jest.fn().mockResolvedValue(undefined),
         save: jest.fn(),
+        findOne: jest.fn(),
+        getRepository: jest.fn(() => ({
+          count: jest.fn().mockResolvedValue(0),
+          update: jest.fn().mockResolvedValue(undefined),
+        })),
       },
     };
 
@@ -112,12 +142,25 @@ describe('GoldExtractionService', () => {
       create: jest.fn(
         (x: Partial<GoldExtractionItem>) => x as GoldExtractionItem,
       ),
+      save: jest.fn(async (x: GoldExtractionItem) => x),
       createQueryBuilder: jest.fn(() => ({
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         getOne: jest.fn().mockResolvedValue(null),
       })),
     };
+
+    storage = {
+      getObjectBuffer: jest.fn().mockResolvedValue(Buffer.from('pdf-bytes')),
+    };
+
+    goldService = {
+      createPurchaseEntity: jest.fn(),
+      findPurchaseById: jest.fn(),
+      findLogicalDuplicateWarnings: jest.fn().mockResolvedValue([]),
+    };
+
+    mockedExtractText.mockReset();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -128,6 +171,8 @@ describe('GoldExtractionService', () => {
           useValue: itemsRepo,
         },
         { provide: DataSource, useValue: dataSource },
+        { provide: ObjectStorageService, useValue: storage },
+        { provide: GoldService, useValue: goldService },
       ],
     }).compile();
 
@@ -166,8 +211,51 @@ describe('GoldExtractionService', () => {
     expect(queryRunner.manager.update).toHaveBeenCalledWith(
       GoldDocument,
       { id: 'doc-1' },
-      { extractionStatus: 'EXTRACTED' },
+      expect.objectContaining({ extractionStatus: 'EXTRACTED' }),
     );
+  });
+
+  it('processes a Public Gold PDF into one extraction item', async () => {
+    documentsRepo.findOne.mockResolvedValue(document());
+    mockedExtractText.mockResolvedValue(PUBLIC_GOLD_PROFORMA_INVOICE_FIXTURE);
+    queryRunner.manager.save.mockImplementation(
+      async (_entity: typeof GoldExtractionItem, rows: GoldExtractionItem[]) =>
+        rows.map((row, index) => ({
+          ...row,
+          id: `item-${index}`,
+          createdAt: now,
+          updatedAt: now,
+        })),
+    );
+
+    const items = await service.processDocumentExtraction('user-a', 'doc-1');
+
+    expect(items).not.toBeNull();
+    expect(items).toHaveLength(1);
+    expect(items![0].rowIndex).toBe(0);
+    expect(items![0].purchaseDate).toBe('2026-08-26');
+    expect(items![0].weightGrams).toBe('0.1529');
+    expect(items![0].amountPaidCents).toBe(10000);
+    expect(items![0].pricePerGramCents).toBe(65400);
+    expect(items![0].referenceNumber).toBe('21727607');
+    expect(items![0].goldPurchaseId).toBeFalsy();
+    expect(storage.getObjectBuffer).toHaveBeenCalledWith(
+      'gold/user-a/doc-1/file.pdf',
+    );
+  });
+
+  it('marks image uploads as OCR_NOT_IMPLEMENTED', async () => {
+    documentsRepo.findOne.mockResolvedValue(
+      document({ mimeType: 'image/png', originalFileName: 'scan.png' }),
+    );
+
+    const items = await service.processDocumentExtraction('user-a', 'doc-1');
+
+    expect(items).toBeNull();
+    expect(documentsRepo.update).toHaveBeenCalledWith('doc-1', {
+      extractionStatus: 'FAILED',
+      extractionError: 'OCR_NOT_IMPLEMENTED',
+    });
   });
 
   it('marks document FAILED when save throws', async () => {
@@ -181,7 +269,7 @@ describe('GoldExtractionService', () => {
     expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
     expect(documentsRepo.update).toHaveBeenCalledWith('doc-1', {
       extractionStatus: 'FAILED',
-      extractionError: 'db save failed',
+      extractionError: 'EXTRACTION_FAILED',
     });
   });
 
@@ -278,6 +366,258 @@ describe('GoldExtractionService', () => {
       pendingItemCount: 2,
     });
   });
+
+  describe('confirmExtractionItem', () => {
+    const extractionItem = (
+      overrides: Partial<GoldExtractionItem> = {},
+    ): GoldExtractionItem =>
+      ({
+        id: 'item-1',
+        goldDocumentId: 'doc-1',
+        userId: 'user-a',
+        rowIndex: 0,
+        status: 'NEEDS_REVIEW',
+        purchaseDate: '2026-08-26',
+        weightGrams: '0.1529',
+        amountPaidCents: 10000,
+        pricePerGramCents: 65400,
+        referenceNumber: '21727607',
+        confidence: '0.9500',
+        rawFields: { extractionSource: 'IMPORT' },
+        validationWarnings: [],
+        goldPurchaseId: null,
+        confirmedAt: null,
+        rejectedAt: null,
+        createdAt: now,
+        updatedAt: now,
+        ...overrides,
+      }) as GoldExtractionItem;
+
+    const confirmInput = {
+      extraction_item_id: 'item-1',
+      purchase_date: '2026-08-26',
+      weight_grams: '0.1529',
+      amount_paid_cents: 10000,
+      price_per_gram_cents: 65400,
+      reference_number: '21727607',
+    };
+
+    beforeEach(() => {
+      queryRunner.manager.findOne = jest.fn();
+      queryRunner.manager.save = jest.fn();
+    });
+
+    it('creates a purchase and links the extraction item', async () => {
+      const item = extractionItem();
+      queryRunner.manager.findOne.mockResolvedValue(item);
+      goldService.createPurchaseEntity.mockResolvedValue({
+        id: 'gp-new',
+        userId: 'user-a',
+        purchaseDate: '2026-08-26',
+        weightGrams: '0.1529',
+        amountPaidCents: 10000,
+        pricePerGramCents: 65400,
+        source: 'IMPORT',
+        referenceNumber: '21727607',
+        notes: null,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+      queryRunner.manager.save.mockImplementation(
+        async (_entity: typeof GoldExtractionItem, row: GoldExtractionItem) =>
+          row,
+      );
+      goldService.findPurchaseById.mockResolvedValue({
+        id: 'gp-new',
+        userId: 'user-a',
+        purchaseDate: '2026-08-26',
+        weightGrams: '0.1529',
+        amountPaidCents: 10000,
+        pricePerGramCents: 65400,
+        source: 'IMPORT',
+        referenceNumber: '21727607',
+        notes: null,
+        isActive: true,
+        currentValueCents: null,
+        unrealizedPlCents: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const result = await service.confirmExtractionItem(
+        'user-a',
+        confirmInput,
+      );
+
+      expect(goldService.createPurchaseEntity).toHaveBeenCalledWith(
+        'user-a',
+        expect.objectContaining({
+          purchase_date: '2026-08-26',
+          weight_grams: '0.1529',
+        }),
+        'IMPORT',
+        queryRunner.manager,
+      );
+      expect(result.purchase.id).toBe('gp-new');
+      expect(result.extractionItem.status).toBe('CONFIRMED');
+      expect(result.extractionItem.goldPurchaseId).toBe('gp-new');
+      expect(result.warnings).toEqual([]);
+      expect(queryRunner.commitTransaction).toHaveBeenCalled();
+    });
+
+    it('returns existing purchase on idempotent re-confirm', async () => {
+      const item = extractionItem({
+        status: 'CONFIRMED',
+        goldPurchaseId: 'gp-existing',
+        confirmedAt: now,
+      });
+      queryRunner.manager.findOne.mockResolvedValue(item);
+      goldService.findPurchaseById.mockResolvedValue({
+        id: 'gp-existing',
+        userId: 'user-a',
+        purchaseDate: '2026-08-26',
+        weightGrams: '0.1529',
+        amountPaidCents: 10000,
+        pricePerGramCents: 65400,
+        source: 'IMPORT',
+        referenceNumber: '21727607',
+        notes: null,
+        isActive: true,
+        currentValueCents: null,
+        unrealizedPlCents: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const result = await service.confirmExtractionItem(
+        'user-a',
+        confirmInput,
+      );
+
+      expect(goldService.createPurchaseEntity).not.toHaveBeenCalled();
+      expect(result.purchase.id).toBe('gp-existing');
+      expect(result.extractionItem.status).toBe('CONFIRMED');
+    });
+
+    it('rejects confirm for another user item', async () => {
+      queryRunner.manager.findOne.mockResolvedValue(
+        extractionItem({ userId: 'user-a' }),
+      );
+
+      await expect(
+        service.confirmExtractionItem('user-b', confirmInput),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
+    });
+
+    it('rejects confirm for rejected items', async () => {
+      queryRunner.manager.findOne.mockResolvedValue(
+        extractionItem({ status: 'REJECTED', rejectedAt: now }),
+      );
+
+      await expect(
+        service.confirmExtractionItem('user-a', confirmInput),
+      ).rejects.toThrow('rejected extraction item');
+    });
+
+    it('returns logical duplicate warnings without blocking', async () => {
+      const item = extractionItem();
+      queryRunner.manager.findOne.mockResolvedValue(item);
+      goldService.createPurchaseEntity.mockResolvedValue({
+        id: 'gp-new',
+        userId: 'user-a',
+        purchaseDate: '2026-08-26',
+        weightGrams: '0.1529',
+        amountPaidCents: 10000,
+        pricePerGramCents: 65400,
+        source: 'IMPORT',
+        referenceNumber: '21727607',
+        notes: null,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+      queryRunner.manager.save.mockImplementation(
+        async (_entity: typeof GoldExtractionItem, row: GoldExtractionItem) =>
+          row,
+      );
+      goldService.findLogicalDuplicateWarnings.mockResolvedValue([
+        'LOGICAL_DUPLICATE_REFERENCE',
+      ]);
+      goldService.findPurchaseById.mockResolvedValue({
+        id: 'gp-new',
+        userId: 'user-a',
+        purchaseDate: '2026-08-26',
+        weightGrams: '0.1529',
+        amountPaidCents: 10000,
+        pricePerGramCents: 65400,
+        source: 'IMPORT',
+        referenceNumber: '21727607',
+        notes: null,
+        isActive: true,
+        currentValueCents: null,
+        unrealizedPlCents: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const result = await service.confirmExtractionItem(
+        'user-a',
+        confirmInput,
+      );
+
+      expect(result.warnings).toEqual(['LOGICAL_DUPLICATE_REFERENCE']);
+      expect(result.purchase.id).toBe('gp-new');
+    });
+  });
+
+  describe('rejectExtractionItem', () => {
+    it('marks a pending item as rejected', async () => {
+      itemsRepo.findOne.mockResolvedValue({
+        id: 'item-1',
+        goldDocumentId: 'doc-1',
+        userId: 'user-a',
+        rowIndex: 0,
+        status: 'NEEDS_REVIEW',
+        goldPurchaseId: null,
+        confirmedAt: null,
+        rejectedAt: null,
+        validationWarnings: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+      itemsRepo.save.mockImplementation(async (row: GoldExtractionItem) => row);
+
+      const result = await service.rejectExtractionItem('user-a', {
+        extraction_item_id: 'item-1',
+      });
+
+      expect(result.status).toBe('REJECTED');
+      expect(result.rejectedAt).toBeInstanceOf(Date);
+    });
+
+    it('is idempotent for already rejected items', async () => {
+      itemsRepo.findOne.mockResolvedValue({
+        id: 'item-1',
+        goldDocumentId: 'doc-1',
+        userId: 'user-a',
+        rowIndex: 0,
+        status: 'REJECTED',
+        rejectedAt: now,
+        validationWarnings: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const result = await service.rejectExtractionItem('user-a', {
+        extraction_item_id: 'item-1',
+      });
+
+      expect(result.status).toBe('REJECTED');
+      expect(itemsRepo.save).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe('GoldExtractionService portfolio isolation', () => {
@@ -372,6 +712,18 @@ describe('GoldExtractionService portfolio isolation', () => {
         {
           provide: DataSource,
           useValue: { createQueryRunner: () => queryRunner },
+        },
+        {
+          provide: ObjectStorageService,
+          useValue: { getObjectBuffer: jest.fn() },
+        },
+        {
+          provide: GoldService,
+          useValue: {
+            createPurchaseEntity: jest.fn(),
+            findPurchaseById: jest.fn(),
+            findLogicalDuplicateWarnings: jest.fn(),
+          },
         },
       ],
     }).compile();

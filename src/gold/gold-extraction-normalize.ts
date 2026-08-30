@@ -7,6 +7,7 @@ import {
   derivePricePerGramCents,
   normalizeStoredWeightGrams,
   parseGramsToUnits,
+  valueCentsFromGramsAndUnitPrice,
 } from './gold-math';
 
 export type ExtractionWarningCode =
@@ -19,7 +20,10 @@ export type ExtractionWarningCode =
   | 'INVALID_DATE'
   | 'INVALID_PRICE_PER_GRAM'
   | 'MISSING_REFERENCE'
-  | 'POSSIBLE_DUPLICATE';
+  | 'POSSIBLE_DUPLICATE'
+  | 'PURCHASE_DATE_FROM_INVOICE_DATE'
+  | 'AMOUNT_PRICE_WEIGHT_MISMATCH'
+  | 'AMOUNT_TOTAL_MISMATCH';
 
 export type RawExtractionCandidate = {
   purchaseDate?: string | null;
@@ -49,8 +53,9 @@ const OVER_4DP_RE = /^\d+\.\d{5,}$/;
 
 export function normalizeExtractionCandidate(
   raw: RawExtractionCandidate,
+  extraWarnings: ExtractionWarningCode[] = [],
 ): NormalizedExtractionCandidate {
-  const warnings: ExtractionWarningCode[] = [];
+  const warnings: ExtractionWarningCode[] = [...extraWarnings];
   const rawFields = raw.rawFields ?? null;
 
   const purchaseDate = normalizePurchaseDate(
@@ -89,6 +94,15 @@ export function normalizeExtractionCandidate(
     raw.referenceNumber ?? extractRawText(rawFields, 'referenceText'),
     warnings,
   );
+
+  const integrityWarning = checkAmountWeightPriceMismatch(
+    weightGrams,
+    pricePerGramCents,
+    amountPaidCents,
+  );
+  if (integrityWarning) {
+    warnings.push(integrityWarning);
+  }
 
   const confidence = normalizeConfidence(raw.confidence);
 
@@ -286,5 +300,55 @@ function isValidCalendarDate(value: string): boolean {
     dt.getUTCFullYear() === y &&
     dt.getUTCMonth() === m - 1 &&
     dt.getUTCDate() === d
+  );
+}
+
+/** Compare weight × price/g to amount paid; allow 1 cent rounding tolerance. */
+function checkAmountWeightPriceMismatch(
+  weightGrams: string | null,
+  pricePerGramCents: number | null,
+  amountPaidCents: number | null,
+): ExtractionWarningCode | null {
+  if (
+    weightGrams == null ||
+    pricePerGramCents == null ||
+    amountPaidCents == null
+  ) {
+    return null;
+  }
+  try {
+    const expected = valueCentsFromGramsAndUnitPrice(
+      weightGrams,
+      pricePerGramCents,
+    );
+    if (Math.abs(expected - amountPaidCents) > 1) {
+      return 'AMOUNT_PRICE_WEIGHT_MISMATCH';
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+export function toExtractionWarningCodes(
+  codes: string[],
+): ExtractionWarningCode[] {
+  const allowed = new Set<string>([
+    'MISSING_DATE',
+    'MISSING_WEIGHT',
+    'MISSING_AMOUNT',
+    'GRAMS_OVER_4DP',
+    'INVALID_WEIGHT',
+    'INVALID_AMOUNT',
+    'INVALID_DATE',
+    'INVALID_PRICE_PER_GRAM',
+    'MISSING_REFERENCE',
+    'POSSIBLE_DUPLICATE',
+    'PURCHASE_DATE_FROM_INVOICE_DATE',
+    'AMOUNT_PRICE_WEIGHT_MISMATCH',
+    'AMOUNT_TOTAL_MISMATCH',
+  ]);
+  return codes.filter((code): code is ExtractionWarningCode =>
+    allowed.has(code),
   );
 }
