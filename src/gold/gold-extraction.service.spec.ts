@@ -621,6 +621,117 @@ describe('GoldExtractionService', () => {
   });
 });
 
+describe('GoldExtractionService linked purchase lifecycle', () => {
+  let service: GoldExtractionService;
+  let manager: {
+    find: jest.Mock;
+    update: jest.Mock;
+  };
+
+  beforeEach(async () => {
+    manager = {
+      find: jest.fn(),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        GoldExtractionService,
+        {
+          provide: getRepositoryToken(GoldDocument),
+          useValue: { findOne: jest.fn(), update: jest.fn() },
+        },
+        {
+          provide: getRepositoryToken(GoldExtractionItem),
+          useValue: {
+            find: jest.fn(),
+            findOne: jest.fn(),
+            count: jest.fn(),
+            create: jest.fn(),
+            save: jest.fn(),
+            createQueryBuilder: jest.fn(),
+          },
+        },
+        {
+          provide: ObjectStorageService,
+          useValue: { getObjectBuffer: jest.fn() },
+        },
+        {
+          provide: DataSource,
+          useValue: { createQueryRunner: jest.fn() },
+        },
+        {
+          provide: GoldService,
+          useValue: {},
+        },
+      ],
+    }).compile();
+
+    service = module.get(GoldExtractionService);
+  });
+
+  it('deactivates only purchases linked via confirmed extraction items', async () => {
+    manager.find.mockResolvedValue([
+      { goldPurchaseId: 'gp-1' },
+      { goldPurchaseId: 'gp-2' },
+      { goldPurchaseId: 'gp-1' },
+    ]);
+
+    const count = await service.setLinkedPurchasesActiveForDocument(
+      'user-a',
+      'doc-1',
+      false,
+      manager as never,
+    );
+
+    expect(count).toBe(1);
+    expect(manager.find).toHaveBeenCalledWith(GoldExtractionItem, {
+      where: {
+        goldDocumentId: 'doc-1',
+        userId: 'user-a',
+        status: 'CONFIRMED',
+      },
+      select: ['goldPurchaseId'],
+    });
+    expect(manager.update).toHaveBeenCalledWith(
+      GoldPurchase,
+      expect.objectContaining({ userId: 'user-a' }),
+      { isActive: false },
+    );
+  });
+
+  it('reactivates linked purchases on restore', async () => {
+    manager.find.mockResolvedValue([{ goldPurchaseId: 'gp-1' }]);
+
+    await service.setLinkedPurchasesActiveForDocument(
+      'user-a',
+      'doc-1',
+      true,
+      manager as never,
+    );
+
+    expect(manager.update).toHaveBeenCalledWith(
+      GoldPurchase,
+      { userId: 'user-a', id: expect.anything() },
+      { isActive: true },
+    );
+  });
+
+  it('does nothing when document has no confirmed linked purchases', async () => {
+    manager.find.mockResolvedValue([]);
+
+    const count = await service.setLinkedPurchasesActiveForDocument(
+      'user-a',
+      'doc-1',
+      false,
+      manager as never,
+    );
+
+    expect(count).toBe(0);
+    expect(manager.update).not.toHaveBeenCalled();
+  });
+});
+
 describe('GoldExtractionService portfolio isolation', () => {
   it('does not create or modify GoldPurchase records during stub extraction', async () => {
     const purchasesRepo = {
