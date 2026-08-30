@@ -357,4 +357,59 @@ describe('GoldService', () => {
       );
     });
   });
+
+  describe('createPurchaseEntity', () => {
+    it('persists IMPORT source for document imports', async () => {
+      await service.createPurchaseEntity(
+        'user-a',
+        {
+          purchase_date: '2026-08-26',
+          weight_grams: '0.1529',
+          amount_paid_cents: 10000,
+          price_per_gram_cents: 65400,
+          reference_number: '21727607',
+        },
+        'IMPORT',
+      );
+
+      expect(purchasesRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source: 'IMPORT',
+          weightGrams: '0.1529',
+          referenceNumber: '21727607',
+        }),
+      );
+    });
+  });
+
+  describe('findLogicalDuplicateWarnings', () => {
+    it('returns warning when reference matches another active purchase', async () => {
+      purchasesRepo.findOne.mockResolvedValue(
+        purchase({ id: 'gp-dup', referenceNumber: 'PG-A001' }),
+      );
+
+      const warnings = await service.findLogicalDuplicateWarnings(
+        'user-a',
+        '2026-08-01',
+        'PG-A001',
+      );
+
+      expect(warnings).toEqual(['LOGICAL_DUPLICATE_REFERENCE']);
+    });
+
+    it('excludes the purchase being confirmed from duplicate check', async () => {
+      purchasesRepo.findOne.mockResolvedValue(
+        purchase({ id: 'gp-self', referenceNumber: 'PG-A001' }),
+      );
+
+      const warnings = await service.findLogicalDuplicateWarnings(
+        'user-a',
+        '2026-08-01',
+        'PG-A001',
+        'gp-self',
+      );
+
+      expect(warnings).toEqual([]);
+    });
+  });
 });

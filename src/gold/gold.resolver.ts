@@ -4,13 +4,18 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { JwtUser } from '../auth/jwt.strategy';
 import { CreateGoldPurchaseInput } from './dto/create-gold-purchase.input';
+import { ConfirmGoldExtractionItemInput } from './dto/confirm-gold-extraction-item.input';
 import { DeleteGoldPurchaseInput } from './dto/delete-gold-purchase.input';
 import { GoldPurchaseFilterInput } from './dto/gold-purchase-filter.input';
+import { RejectGoldExtractionItemInput } from './dto/reject-gold-extraction-item.input';
 import { SetGoldPriceInput } from './dto/set-gold-price.input';
 import { UpdateGoldPurchaseInput } from './dto/update-gold-purchase.input';
 import { GoldDocumentService } from './gold-document.service';
+import { GoldExtractionService } from './gold-extraction.service';
 import { GoldService } from './gold.service';
 import { GoldDocumentModel } from './models/gold-document.model';
+import { ConfirmGoldExtractionItemResultModel } from './models/confirm-gold-extraction-item.model';
+import { GoldExtractionItemModel } from './models/gold-extraction-item.model';
 import {
   GoldDashboardModel,
   GoldPriceModel,
@@ -22,6 +27,7 @@ export class GoldResolver {
   constructor(
     private readonly goldService: GoldService,
     private readonly goldDocumentService: GoldDocumentService,
+    private readonly goldExtractionService: GoldExtractionService,
   ) {}
 
   @Query(() => GoldDashboardModel, { name: 'goldDashboard' })
@@ -107,5 +113,35 @@ export class GoldResolver {
     @Args('id', { type: () => ID }) id: string,
   ): Promise<GoldDocumentModel> {
     return this.goldDocumentService.findDocumentById(user.id, id);
+  }
+
+  @Mutation(() => GoldDocumentModel, { name: 'retryGoldDocumentExtraction' })
+  @UseGuards(JwtAuthGuard)
+  async retryGoldDocumentExtraction(
+    @CurrentUser() user: JwtUser,
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<GoldDocumentModel> {
+    await this.goldExtractionService.retryDocumentExtraction(user.id, id);
+    return this.goldDocumentService.findDocumentById(user.id, id);
+  }
+
+  @Mutation(() => ConfirmGoldExtractionItemResultModel, {
+    name: 'confirmGoldExtractionItem',
+  })
+  @UseGuards(JwtAuthGuard)
+  confirmGoldExtractionItem(
+    @CurrentUser() user: JwtUser,
+    @Args('input') input: ConfirmGoldExtractionItemInput,
+  ): Promise<ConfirmGoldExtractionItemResultModel> {
+    return this.goldExtractionService.confirmExtractionItem(user.id, input);
+  }
+
+  @Mutation(() => GoldExtractionItemModel, { name: 'rejectGoldExtractionItem' })
+  @UseGuards(JwtAuthGuard)
+  rejectGoldExtractionItem(
+    @CurrentUser() user: JwtUser,
+    @Args('input') input: RejectGoldExtractionItemInput,
+  ): Promise<GoldExtractionItemModel> {
+    return this.goldExtractionService.rejectExtractionItem(user.id, input);
   }
 }

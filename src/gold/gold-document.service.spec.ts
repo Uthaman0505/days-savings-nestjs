@@ -78,6 +78,7 @@ describe('GoldDocumentService', () => {
     extractionService = {
       countItemsForDocuments: jest.fn().mockResolvedValue(new Map()),
       findItemsByDocumentId: jest.fn().mockResolvedValue([]),
+      processDocumentExtraction: jest.fn().mockResolvedValue(null),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -135,6 +136,9 @@ describe('GoldDocumentService', () => {
     expect(result.document.originalFileName).toBe('receipt.png');
     expect(result.document.fileUrl).toMatch(
       /^https:\/\/api\.example\.com\/gold\/documents\/[0-9a-f-]+\/file$/,
+    );
+    expect(extractionService.processDocumentExtraction).toHaveBeenCalledTimes(
+      1,
     );
     expect(storage.putObject).toHaveBeenCalledTimes(1);
     expect(storage.putObject.mock.calls[0][0].key).toMatch(

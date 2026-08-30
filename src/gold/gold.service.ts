@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import {
   Between,
+  EntityManager,
   FindOptionsWhere,
   LessThanOrEqual,
   MoreThanOrEqual,
@@ -26,7 +27,7 @@ import {
   valueCentsFromGramsAndUnitPrice,
 } from './gold-math';
 import { GoldPrice } from './gold-price.entity';
-import { GoldPurchase } from './gold-purchase.entity';
+import { GoldPurchase, type GoldPurchaseSource } from './gold-purchase.entity';
 import {
   GoldDashboardModel,
   GoldPriceModel,
@@ -35,6 +36,15 @@ import {
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MANUAL_SOURCE = 'MANUAL' as const;
+
+export type CreateGoldPurchaseFields = {
+  purchase_date: string;
+  weight_grams: string;
+  amount_paid_cents: number;
+  price_per_gram_cents?: number;
+  reference_number?: string;
+  notes?: string;
+};
 
 @Injectable()
 export class GoldService {
@@ -162,6 +172,20 @@ export class GoldService {
     userId: string,
     input: CreateGoldPurchaseInput,
   ): Promise<GoldPurchaseModel> {
+    const saved = await this.createPurchaseEntity(userId, input, MANUAL_SOURCE);
+    const latestPrice = await this.findLatestPriceEntity(userId);
+    return this.toPurchaseModel(saved, latestPrice);
+  }
+
+  /**
+   * Creates a purchase row. When `manager` is supplied the caller owns the transaction.
+   */
+  async createPurchaseEntity(
+    userId: string,
+    input: CreateGoldPurchaseFields,
+    source: GoldPurchaseSource,
+    manager?: EntityManager,
+  ): Promise<GoldPurchase> {
     const purchaseDate = this.requireDateString(
       input.purchase_date,
       'purchase_date',
@@ -193,14 +217,47 @@ export class GoldService {
       weightGrams,
       amountPaidCents,
       pricePerGramCents,
-      source: MANUAL_SOURCE,
+      source,
       referenceNumber: input.reference_number?.trim() || null,
       notes: input.notes?.trim() || null,
       isActive: true,
     });
-    const saved = await this.purchasesRepo.save(row);
-    const latestPrice = await this.findLatestPriceEntity(userId);
-    return this.toPurchaseModel(saved, latestPrice);
+
+    if (manager) {
+      return manager.save(GoldPurchase, row);
+    }
+    return this.purchasesRepo.save(row);
+  }
+
+  /** Advisory duplicate check — does not block import. */
+  async findLogicalDuplicateWarnings(
+    userId: string,
+    purchaseDate: string,
+    referenceNumber: string | null,
+    excludePurchaseId?: string,
+    manager?: EntityManager,
+  ): Promise<string[]> {
+    const ref = referenceNumber?.trim();
+    if (!ref) {
+      return [];
+    }
+
+    const repo = manager
+      ? manager.getRepository(GoldPurchase)
+      : this.purchasesRepo;
+    const existing = await repo.findOne({
+      where: {
+        userId,
+        purchaseDate,
+        referenceNumber: ref,
+        isActive: true,
+      },
+    });
+
+    if (existing && existing.id !== excludePurchaseId) {
+      return ['LOGICAL_DUPLICATE_REFERENCE'];
+    }
+    return [];
   }
 
   async updatePurchase(

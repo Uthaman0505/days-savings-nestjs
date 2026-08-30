@@ -96,6 +96,19 @@ export class ObjectStorageService {
     }
   }
 
+  async getObjectBuffer(key: string): Promise<Buffer> {
+    const out = await this.getObject(key);
+    const body = out.Body;
+    if (!body) {
+      throw new InternalServerErrorException('Failed to read file.');
+    }
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of body as Readable) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+  }
+
   async deleteObject(key: string): Promise<void> {
     try {
       await this.s3.send(
