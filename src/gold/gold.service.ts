@@ -19,7 +19,9 @@ import { UpdateGoldPurchaseInput } from './dto/update-gold-purchase.input';
 import {
   averageCostPerGramCents,
   derivePricePerGramCents,
-  gramsToMilligrams,
+  formatGramUnits,
+  normalizeStoredWeightGrams,
+  parseGramsToUnits,
   sumGramsStrings,
   valueCentsFromGramsAndUnitPrice,
 } from './gold-math';
@@ -56,10 +58,12 @@ export class GoldService {
     );
     const totalGrams =
       purchases.length === 0
-        ? '0.000'
-        : sumGramsStrings(purchases.map((p) => p.weightGrams));
+        ? '0.0000'
+        : sumGramsStrings(
+            purchases.map((p) => normalizeStoredWeightGrams(p.weightGrams)),
+          );
 
-    const hasGrams = purchases.length > 0 && totalGrams !== '0.000';
+    const hasGrams = purchases.length > 0 && totalGrams !== '0.0000';
     const averageCost = hasGrams
       ? averageCostPerGramCents(totalInvestedCents, totalGrams)
       : 0;
@@ -369,19 +373,19 @@ export class GoldService {
   private requireWeightGrams(raw: string): string {
     const trimmed = raw.trim();
     try {
-      const mg = gramsToMilligrams(trimmed);
-      if (mg <= 0n) {
+      const units = parseGramsToUnits(trimmed);
+      if (units <= 0n) {
         throw new BadRequestException(
           'weight_grams must be greater than zero.',
         );
       }
-      // Normalize to scale 3 for storage consistency.
-      const whole = mg / 1000n;
-      const frac = mg % 1000n;
-      return `${whole.toString()}.${frac.toString().padStart(3, '0')}`;
-    } catch {
+      return formatGramUnits(units);
+    } catch (e) {
+      if (e instanceof BadRequestException) {
+        throw e;
+      }
       throw new BadRequestException(
-        'weight_grams must be a positive number with up to 3 decimal places.',
+        'weight_grams must be a positive number with up to 4 decimal places.',
       );
     }
   }
@@ -412,7 +416,7 @@ export class GoldService {
     let unrealizedPlCents: number | null = null;
     if (latestPrice && row.isActive) {
       currentValueCents = valueCentsFromGramsAndUnitPrice(
-        row.weightGrams,
+        normalizeStoredWeightGrams(row.weightGrams),
         latestPrice.pgBuyPricePerGramCents,
       );
       unrealizedPlCents = currentValueCents - row.amountPaidCents;
@@ -421,7 +425,7 @@ export class GoldService {
       id: row.id,
       userId: row.userId,
       purchaseDate: this.normalizeDate(row.purchaseDate),
-      weightGrams: row.weightGrams,
+      weightGrams: normalizeStoredWeightGrams(row.weightGrams),
       amountPaidCents: row.amountPaidCents,
       pricePerGramCents: row.pricePerGramCents,
       source: row.source,

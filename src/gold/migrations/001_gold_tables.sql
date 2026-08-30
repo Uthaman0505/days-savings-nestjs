@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS gold_purchases (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   purchase_date DATE NOT NULL,
-  weight_grams NUMERIC(12, 3) NOT NULL,
+  weight_grams NUMERIC(12, 4) NOT NULL,
   amount_paid_cents INT NOT NULL,
   price_per_gram_cents INT NOT NULL,
   source VARCHAR(32) NOT NULL DEFAULT 'MANUAL',

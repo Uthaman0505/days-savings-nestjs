@@ -21,8 +21,8 @@ export class UpdateGoldPurchaseInput {
   @Field(() => String, { name: 'weight_grams', nullable: true })
   @IsOptional()
   @IsString()
-  @Matches(/^(?:0|[1-9]\d*)(?:\.\d{1,3})?$/, {
-    message: 'weight_grams must be a positive number with up to 3 decimals',
+  @Matches(/^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/, {
+    message: 'weight_grams must be a positive number with up to 4 decimals',
   })
   weight_grams?: string;
 

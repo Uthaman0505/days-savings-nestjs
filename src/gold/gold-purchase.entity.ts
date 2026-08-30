@@ -31,12 +31,12 @@ export class GoldPurchase {
   @Column({ name: 'purchase_date', type: 'date' })
   purchaseDate: string;
 
-  /** Weight in grams (numeric(12,3) as string). */
+  /** Weight in grams (numeric(12,4) as string). */
   @Column({
     name: 'weight_grams',
     type: 'numeric',
     precision: 12,
-    scale: 3,
+    scale: 4,
   })
   weightGrams: string;
 
