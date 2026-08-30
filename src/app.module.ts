@@ -32,6 +32,7 @@ import { RecurringTransactionModule } from './recurring-transaction/recurring-tr
 import { PawnLoanModule } from './pawn-loan/pawn-loan.module';
 import { MissionControlModule } from './mission-control/mission-control.module';
 import { GoldModule } from './gold/gold.module';
+import { StorageModule } from './storage/storage.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { GoldModule } from './gold/gold.module';
     }),
     ScheduleModule.forRoot(),
     DatabaseModule,
+    StorageModule,
     GraphQLModule.forRoot<ApolloDriverConfig>({
       driver: ApolloDriver,
       autoSchemaFile: true,
