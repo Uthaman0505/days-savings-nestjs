@@ -68,6 +68,9 @@ export class GoldPriceModel {
   @Field(() => String, { nullable: true })
   notes: string | null;
 
+  @Field(() => Date, { name: 'captured_price_at', nullable: true })
+  capturedPriceAt: Date | null;
+
   @Field(() => Date, { name: 'created_at' })
   createdAt: Date;
 

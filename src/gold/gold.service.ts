@@ -36,6 +36,15 @@ import {
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MANUAL_SOURCE = 'MANUAL' as const;
+const SCREENSHOT_SOURCE = 'SCREENSHOT' as const;
+
+export type ConfirmScreenshotPriceFields = {
+  priceDate: string;
+  capturedPriceAt: Date;
+  pgBuyPricePerGramCents: number;
+  pgSellPricePerGramCents: number;
+  notes: string | null;
+};
 
 export type CreateGoldPurchaseFields = {
   purchase_date: string;
@@ -330,6 +339,64 @@ export class GoldService {
     return row ? this.toPriceModel(row) : null;
   }
 
+  async findMyGoldPrices(
+    userId: string,
+    limit = 50,
+  ): Promise<GoldPriceModel[]> {
+    const rows = await this.pricesRepo.find({
+      where: { userId },
+      order: { capturedPriceAt: 'DESC', priceDate: 'DESC', createdAt: 'DESC' },
+      take: limit,
+    });
+    return rows.map((row) => this.toPriceModel(row));
+  }
+
+  async confirmScreenshotPrice(
+    userId: string,
+    fields: ConfirmScreenshotPriceFields,
+    manager?: EntityManager,
+  ): Promise<GoldPrice> {
+    const priceDate = this.requireDateString(fields.priceDate, 'price_date');
+    const pgBuy = this.requirePositiveCents(
+      fields.pgBuyPricePerGramCents,
+      'pg_buy_price_per_gram_cents',
+    );
+    const pgSell = this.requirePositiveCents(
+      fields.pgSellPricePerGramCents,
+      'pg_sell_price_per_gram_cents',
+    );
+    this.requireValidSpread(pgSell, pgBuy);
+
+    const repo = manager ? manager.getRepository(GoldPrice) : this.pricesRepo;
+
+    const existing = await repo.findOne({
+      where: {
+        userId,
+        capturedPriceAt: fields.capturedPriceAt,
+        source: SCREENSHOT_SOURCE,
+      },
+    });
+
+    if (existing) {
+      existing.pgBuyPricePerGramCents = pgBuy;
+      existing.pgSellPricePerGramCents = pgSell;
+      existing.priceDate = priceDate;
+      existing.notes = fields.notes;
+      return repo.save(existing);
+    }
+
+    const created = repo.create({
+      userId,
+      priceDate,
+      capturedPriceAt: fields.capturedPriceAt,
+      pgBuyPricePerGramCents: pgBuy,
+      pgSellPricePerGramCents: pgSell,
+      source: SCREENSHOT_SOURCE,
+      notes: fields.notes,
+    });
+    return repo.save(created);
+  }
+
   async setGoldPrice(
     userId: string,
     input: SetGoldPriceInput,
@@ -379,13 +446,16 @@ export class GoldService {
     userId: string,
   ): Promise<GoldPrice | null> {
     const today = this.todayDateString();
-    return this.pricesRepo.findOne({
-      where: {
-        userId,
-        priceDate: LessThanOrEqual(today),
-      },
-      order: { priceDate: 'DESC', createdAt: 'DESC' },
-    });
+    return this.pricesRepo
+      .createQueryBuilder('p')
+      .where('p.userId = :userId', { userId })
+      .andWhere('p.priceDate <= :today', { today })
+      .orderBy(
+        'COALESCE(p.capturedPriceAt, CAST(p.priceDate AS timestamptz))',
+        'DESC',
+      )
+      .addOrderBy('p.createdAt', 'DESC')
+      .getOne();
   }
 
   private todayDateString(): string {
@@ -505,6 +575,7 @@ export class GoldService {
       pgSellPricePerGramCents: row.pgSellPricePerGramCents,
       source: row.source,
       notes: row.notes,
+      capturedPriceAt: row.capturedPriceAt,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };

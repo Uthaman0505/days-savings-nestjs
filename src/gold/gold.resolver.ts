@@ -3,6 +3,7 @@ import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { JwtUser } from '../auth/jwt.strategy';
+import { ConfirmGoldPriceCaptureInput } from './dto/confirm-gold-price-capture.input';
 import { ConfirmGoldExtractionItemInput } from './dto/confirm-gold-extraction-item.input';
 import { CreateGoldPurchaseInput } from './dto/create-gold-purchase.input';
 import { DeleteGoldDocumentInput } from './dto/delete-gold-document.input';
@@ -13,10 +14,12 @@ import { SetGoldPriceInput } from './dto/set-gold-price.input';
 import { UpdateGoldPurchaseInput } from './dto/update-gold-purchase.input';
 import { GoldDocumentService } from './gold-document.service';
 import { GoldExtractionService } from './gold-extraction.service';
+import { GoldPriceCaptureService } from './gold-price-capture.service';
 import { GoldService } from './gold.service';
 import { GoldDocumentModel } from './models/gold-document.model';
 import { ConfirmGoldExtractionItemResultModel } from './models/confirm-gold-extraction-item.model';
 import { GoldExtractionItemModel } from './models/gold-extraction-item.model';
+import { GoldPriceCaptureModel } from './models/gold-price-capture.model';
 import {
   GoldDashboardModel,
   GoldPriceModel,
@@ -29,6 +32,7 @@ export class GoldResolver {
     private readonly goldService: GoldService,
     private readonly goldDocumentService: GoldDocumentService,
     private readonly goldExtractionService: GoldExtractionService,
+    private readonly goldPriceCaptureService: GoldPriceCaptureService,
   ) {}
 
   @Query(() => GoldDashboardModel, { name: 'goldDashboard' })
@@ -90,6 +94,46 @@ export class GoldResolver {
     @Args('input') input: DeleteGoldPurchaseInput,
   ): Promise<boolean> {
     return this.goldService.deletePurchase(user.id, input.id);
+  }
+
+  @Query(() => [GoldPriceModel], { name: 'myGoldPrices' })
+  @UseGuards(JwtAuthGuard)
+  myGoldPrices(@CurrentUser() user: JwtUser): Promise<GoldPriceModel[]> {
+    return this.goldService.findMyGoldPrices(user.id);
+  }
+
+  @Query(() => [GoldPriceCaptureModel], { name: 'myGoldPriceCaptures' })
+  @UseGuards(JwtAuthGuard)
+  myGoldPriceCaptures(
+    @CurrentUser() user: JwtUser,
+  ): Promise<GoldPriceCaptureModel[]> {
+    return this.goldPriceCaptureService.findMyCaptures(user.id);
+  }
+
+  @Query(() => GoldPriceCaptureModel, { name: 'goldPriceCaptureById' })
+  @UseGuards(JwtAuthGuard)
+  goldPriceCaptureById(
+    @CurrentUser() user: JwtUser,
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<GoldPriceCaptureModel> {
+    return this.goldPriceCaptureService.findCaptureById(user.id, id);
+  }
+
+  @Mutation(() => GoldPriceCaptureModel, { name: 'createGoldPriceCapture' })
+  @UseGuards(JwtAuthGuard)
+  createGoldPriceCapture(
+    @CurrentUser() user: JwtUser,
+  ): Promise<GoldPriceCaptureModel> {
+    return this.goldPriceCaptureService.createCapture(user.id);
+  }
+
+  @Mutation(() => GoldPriceCaptureModel, { name: 'confirmGoldPriceCapture' })
+  @UseGuards(JwtAuthGuard)
+  confirmGoldPriceCapture(
+    @CurrentUser() user: JwtUser,
+    @Args('input') input: ConfirmGoldPriceCaptureInput,
+  ): Promise<GoldPriceCaptureModel> {
+    return this.goldPriceCaptureService.confirmCapture(user.id, input);
   }
 
   @Mutation(() => GoldPriceModel, { name: 'setGoldPrice' })
