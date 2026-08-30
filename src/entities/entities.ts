@@ -40,6 +40,8 @@ import { DebtPriority } from '../mission-control/debt-priority.entity';
 import { FinancialMission } from '../mission-control/financial-mission.entity';
 import { MonthlySnapshot } from '../mission-control/monthly-snapshot.entity';
 import { ProjectionSettings } from '../mission-control/projection-settings.entity';
+import { GoldDocument } from '../gold/gold-document.entity';
+import { GoldExtractionItem } from '../gold/gold-extraction-item.entity';
 import { GoldPurchase } from '../gold/gold-purchase.entity';
 import { GoldPrice } from '../gold/gold-price.entity';
 
@@ -88,4 +90,6 @@ export const entities = [
   ProjectionSettings,
   GoldPurchase,
   GoldPrice,
+  GoldDocument,
+  GoldExtractionItem,
 ];

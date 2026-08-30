@@ -8,7 +8,9 @@ import { DeleteGoldPurchaseInput } from './dto/delete-gold-purchase.input';
 import { GoldPurchaseFilterInput } from './dto/gold-purchase-filter.input';
 import { SetGoldPriceInput } from './dto/set-gold-price.input';
 import { UpdateGoldPurchaseInput } from './dto/update-gold-purchase.input';
+import { GoldDocumentService } from './gold-document.service';
 import { GoldService } from './gold.service';
+import { GoldDocumentModel } from './models/gold-document.model';
 import {
   GoldDashboardModel,
   GoldPriceModel,
@@ -17,7 +19,10 @@ import {
 
 @Resolver()
 export class GoldResolver {
-  constructor(private readonly goldService: GoldService) {}
+  constructor(
+    private readonly goldService: GoldService,
+    private readonly goldDocumentService: GoldDocumentService,
+  ) {}
 
   @Query(() => GoldDashboardModel, { name: 'goldDashboard' })
   @UseGuards(JwtAuthGuard)
@@ -87,5 +92,20 @@ export class GoldResolver {
     @Args('input') input: SetGoldPriceInput,
   ): Promise<GoldPriceModel> {
     return this.goldService.setGoldPrice(user.id, input);
+  }
+
+  @Query(() => [GoldDocumentModel], { name: 'myGoldDocuments' })
+  @UseGuards(JwtAuthGuard)
+  myGoldDocuments(@CurrentUser() user: JwtUser): Promise<GoldDocumentModel[]> {
+    return this.goldDocumentService.findMyDocuments(user.id);
+  }
+
+  @Query(() => GoldDocumentModel, { name: 'goldDocumentById' })
+  @UseGuards(JwtAuthGuard)
+  goldDocumentById(
+    @CurrentUser() user: JwtUser,
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<GoldDocumentModel> {
+    return this.goldDocumentService.findDocumentById(user.id, id);
   }
 }
