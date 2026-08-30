@@ -18,8 +18,12 @@ describe('gold-math', () => {
     });
 
     it('rejects more than 4 decimal places', () => {
-      expect(() => parseGramsToUnits('1.16861')).toThrow('INVALID_WEIGHT_FORMAT');
-      expect(() => parseGramsToUnits('0.00001')).toThrow('INVALID_WEIGHT_FORMAT');
+      expect(() => parseGramsToUnits('1.16861')).toThrow(
+        'INVALID_WEIGHT_FORMAT',
+      );
+      expect(() => parseGramsToUnits('0.00001')).toThrow(
+        'INVALID_WEIGHT_FORMAT',
+      );
     });
   });
 
