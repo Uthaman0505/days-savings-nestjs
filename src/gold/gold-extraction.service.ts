@@ -110,7 +110,7 @@ export class GoldExtractionService {
       const code = this.resolveFailureCode(err);
       await this.markDocumentFailed(documentId, code);
       this.logger.warn(
-        `Gold extraction failed documentId=${documentId} code=${code}`,
+        `Gold extraction failed documentId=${documentId} code=${code} pipeline=purchase-document`,
       );
       if (
         err instanceof GoldExtractionError ||

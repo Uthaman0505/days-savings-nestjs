@@ -3,6 +3,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -43,6 +44,8 @@ export type GoldPriceScreenshotUploadResult = {
 
 @Injectable()
 export class GoldPriceCaptureService {
+  private readonly logger = new Logger(GoldPriceCaptureService.name);
+
   constructor(
     @InjectRepository(GoldPriceCapture)
     private readonly capturesRepo: Repository<GoldPriceCapture>,
@@ -95,12 +98,11 @@ export class GoldPriceCaptureService {
       where: { userId, sha256Hash, isActive: true },
     });
     if (existingHash) {
-      const existingCapture = await this.findCaptureById(
-        userId,
-        existingHash.captureId,
-      );
+      // Keep the current capture session. Duplicate protection must not swap
+      // the UI onto a different (possibly confirmed) capture.
+      const current = await this.findCaptureById(userId, captureId);
       return {
-        capture: existingCapture,
+        capture: current,
         screenshotId: existingHash.id,
         duplicate: true,
       };
@@ -109,15 +111,11 @@ export class GoldPriceCaptureService {
     const existingSide = await this.screenshotsRepo.findOne({
       where: { captureId, side, isActive: true },
     });
-    if (existingSide) {
-      throw new BadRequestException(
-        `A ${side} GAP screenshot is already attached to this capture.`,
-      );
-    }
 
-    const screenshotId = randomUUID();
+    const screenshotId = existingSide?.id ?? randomUUID();
     const ext = extensionFromMime(contentType);
     const storageKey = `gold-price/${userId}/${captureId}/${side.toLowerCase()}-${Date.now()}-${randomUUID()}.${ext}`;
+    const previousStorageKey = existingSide?.storageKey;
 
     try {
       await this.storage.putObject({
@@ -129,19 +127,33 @@ export class GoldPriceCaptureService {
       throw new InternalServerErrorException('Failed to store screenshot.');
     }
 
-    const screenshot = this.screenshotsRepo.create({
-      id: screenshotId,
-      captureId,
-      userId,
-      side,
-      originalFileName: this.sanitizeFileName(file.originalname),
-      mimeType: contentType,
-      fileSizeBytes: file.size,
-      storageKey,
-      sha256Hash,
-      extractionStatus: 'EXTRACTING',
-      isActive: true,
-    });
+    const screenshot = existingSide
+      ? Object.assign(existingSide, {
+          originalFileName: this.sanitizeFileName(file.originalname),
+          mimeType: contentType,
+          fileSizeBytes: file.size,
+          storageKey,
+          sha256Hash,
+          extractionStatus: 'EXTRACTING',
+          extractionError: null,
+          screenType: null,
+          extractedPgPricePerGramCents: null,
+          extractedUpdatedAt: null,
+          warnings: null,
+        })
+      : this.screenshotsRepo.create({
+          id: screenshotId,
+          captureId,
+          userId,
+          side,
+          originalFileName: this.sanitizeFileName(file.originalname),
+          mimeType: contentType,
+          fileSizeBytes: file.size,
+          storageKey,
+          sha256Hash,
+          extractionStatus: 'EXTRACTING',
+          isActive: true,
+        });
 
     let savedScreenshot: GoldPriceScreenshot;
     try {
@@ -149,6 +161,16 @@ export class GoldPriceCaptureService {
     } catch (err) {
       await this.storage.deleteObject(storageKey);
       throw err;
+    }
+
+    if (previousStorageKey && previousStorageKey !== storageKey) {
+      try {
+        await this.storage.deleteObject(previousStorageKey);
+      } catch {
+        this.logger.warn(
+          `Failed to delete replaced screenshot object captureId=${captureId} side=${side}`,
+        );
+      }
     }
 
     await this.extractScreenshot(savedScreenshot, file.buffer);
@@ -277,6 +299,9 @@ export class GoldPriceCaptureService {
     buffer: Buffer,
   ): Promise<void> {
     try {
+      this.logger.log(
+        `Price screenshot OCR start captureId=${screenshot.captureId} side=${screenshot.side} pipeline=gold-price-capture`,
+      );
       const text = await this.ocr.extractTextFromImageBuffer(buffer);
       const parsed = parsePublicGoldPriceScreenshot(text);
 
@@ -284,6 +309,9 @@ export class GoldPriceCaptureService {
         screenshot.extractionStatus = 'FAILED';
         screenshot.extractionError = parsed.errorCode;
         screenshot.warnings = parsed.warnings;
+        this.logger.warn(
+          `Price screenshot parse failed captureId=${screenshot.captureId} side=${screenshot.side} code=${parsed.errorCode} pipeline=gold-price-capture`,
+        );
         await this.screenshotsRepo.save(screenshot);
         return;
       }
@@ -302,9 +330,12 @@ export class GoldPriceCaptureService {
       screenshot.warnings = warnings.length > 0 ? warnings : null;
       await this.screenshotsRepo.save(screenshot);
     } catch (err) {
+      const code = err instanceof Error ? err.message : 'EXTRACTION_FAILED';
       screenshot.extractionStatus = 'FAILED';
-      screenshot.extractionError =
-        err instanceof Error ? err.message : 'EXTRACTION_FAILED';
+      screenshot.extractionError = code;
+      this.logger.warn(
+        `Price screenshot OCR failed captureId=${screenshot.captureId} side=${screenshot.side} code=${code} pipeline=gold-price-capture`,
+      );
       await this.screenshotsRepo.save(screenshot);
     }
   }

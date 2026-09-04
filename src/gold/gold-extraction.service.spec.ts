@@ -245,7 +245,7 @@ describe('GoldExtractionService', () => {
     );
   });
 
-  it('marks image uploads as OCR_NOT_IMPLEMENTED', async () => {
+  it('marks purchase-document image uploads as OCR_NOT_IMPLEMENTED without affecting price screenshots', async () => {
     documentsRepo.findOne.mockResolvedValue(
       document({ mimeType: 'image/png', originalFileName: 'scan.png' }),
     );

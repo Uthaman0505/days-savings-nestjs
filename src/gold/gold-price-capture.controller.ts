@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Param,
   Post,
@@ -47,10 +48,14 @@ export class GoldPriceCaptureController {
       buffer: Buffer;
     },
   ) {
+    const normalizedSide = (side ?? '').trim().toUpperCase();
+    if (normalizedSide !== 'BUY' && normalizedSide !== 'SELL') {
+      throw new BadRequestException('side must be BUY or SELL.');
+    }
     return this.goldPriceCaptureService.uploadScreenshot(
       req.user.id,
       captureId,
-      side.toUpperCase() as GoldPriceScreenshotSide,
+      normalizedSide as GoldPriceScreenshotSide,
       file,
     );
   }
