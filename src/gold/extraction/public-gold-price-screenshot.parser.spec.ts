@@ -1,6 +1,9 @@
 import {
+  BUY_GAP_NOISY_OCR_TEXT,
   BUY_GAP_SCREENSHOT_OCR_TEXT,
+  BUY_GAP_TWO_COLUMN_OCR_TEXT,
   SELL_GAP_SCREENSHOT_OCR_TEXT,
+  SELL_GAP_TWO_COLUMN_OCR_TEXT,
 } from './fixtures/public-gold-price-screenshot.fixture';
 import {
   compareScreenshotTimestamps,
@@ -92,5 +95,37 @@ describe('PublicGoldPriceScreenshotParser', () => {
     const spread = validatePriceSpread(56000, 58000);
     expect(spread.valid).toBe(false);
     expect(spread.warning).toBe('INVALID_PRICE_SPREAD');
+  });
+
+  it('extracts the yellow-box gold /g price from two-column OCR without using silver /100g', () => {
+    expect(extractGoldPerGramCents(BUY_GAP_TWO_COLUMN_OCR_TEXT)).toBe(62500);
+    expect(extractGoldPerGramCents(SELL_GAP_TWO_COLUMN_OCR_TEXT)).toBe(57300);
+    const buy = parsePublicGoldPriceScreenshot(BUY_GAP_TWO_COLUMN_OCR_TEXT);
+    const sell = parsePublicGoldPriceScreenshot(SELL_GAP_TWO_COLUMN_OCR_TEXT);
+    expect(
+      buy.ok &&
+        buy.priceRole === 'PG_SELL' &&
+        buy.pgPricePerGramCents === 62500,
+    ).toBe(true);
+    expect(
+      sell.ok &&
+        sell.priceRole === 'PG_BUY' &&
+        sell.pgPricePerGramCents === 57300,
+    ).toBe(true);
+  });
+
+  it('recovers yellow-box price when Tesseract reads Au 999.9 as 999 9 and /g as /9', () => {
+    const result = parsePublicGoldPriceScreenshot(BUY_GAP_NOISY_OCR_TEXT);
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.pgPricePerGramCents).toBe(62500);
+    expect(result.priceRole).toBe('PG_SELL');
+  });
+
+  it('does not treat RM 0.00 totals as the gold price', () => {
+    expect(extractGoldPerGramCents(BUY_GAP_SCREENSHOT_OCR_TEXT)).toBe(62500);
+    expect(extractGoldPerGramCents(BUY_GAP_SCREENSHOT_OCR_TEXT)).not.toBe(0);
   });
 });

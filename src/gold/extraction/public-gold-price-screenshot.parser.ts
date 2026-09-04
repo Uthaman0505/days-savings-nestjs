@@ -41,19 +41,36 @@ const MONTH_MAP: Record<string, number> = {
 
 const BUY_TITLE_RE = /\bBuy\s+GAP\s*(?:\/\s*SAP)?\b/i;
 const SELL_TITLE_RE = /\bSell\s+GAP\s*(?:\/\s*SAP)?\b/i;
-const GOLD_MARKER_RE = /Gold\s*\(\s*Au\s*999\.9\s*\)/i;
-const SILVER_MARKER_RE = /Silver\s*\(\s*Si\s*999\s*\)/i;
+/** Yellow card: Gold (Au 999.9). Allows "Gold Silver\\n(Au 999.9)" two-column OCR. */
+const GOLD_MARKER_RE = /Gold[\s\S]{0,40}?\(\s*Au\s*999(?:[.\s,]?9)?\s*\)/i;
+/** White card: Silver (Ag 999.9). Older OCR may still emit Si 999. */
 const UPDATED_RE =
   /Prices\s+last\s+updated\s+on\s+(\d{1,2})-([A-Za-z]{3})-(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)/i;
 
-/** Per-gram gold price only — rejects /100g silver-style units. */
-const GOLD_PER_GRAM_RE = /RM\s*([\d,]+(?:\.\d{1,2})?)\s*\/\s*g\b/i;
+/**
+ * Gold yellow-box unit is /g. Tesseract often reads /g as /9.
+ * /100g (silver) is captured as a separate unit so it can be skipped.
+ */
+const RM_UNIT_PRICE_SOURCE =
+  'RM\\s*([\\d,]+(?:\\.\\d{1,2})?)\\s*\\/\\s*(100\\s*g|g|9)\\b';
+
+export function normalizePriceScreenshotOcr(raw: string): string {
+  let text = raw.replace(/\r\n/g, '\n').replace(/\u00a0/g, ' ');
+  text = text.replace(/\b(Au|Ag|Si)\s*9999\b/gi, '$1 999.9');
+  text = text.replace(/\b(Au|Ag|Si)\s*999[\s,]9\b/gi, '$1 999.9');
+  return text;
+}
+
+/** Compact OCR for logs — never include image bytes or tokens. */
+export function compactOcrSnippet(raw: string, max = 240): string {
+  return raw.replace(/\s+/g, ' ').trim().slice(0, max);
+}
 
 export function parsePublicGoldPriceScreenshot(
   rawText: string,
 ): PriceScreenshotParseResult {
   const warnings: string[] = [];
-  const text = rawText.replace(/\r\n/g, '\n');
+  const text = normalizePriceScreenshotOcr(rawText);
 
   const screenType = detectScreenType(text);
   if (screenType === 'UNKNOWN') {
@@ -97,8 +114,9 @@ export function parsePublicGoldPriceScreenshot(
 }
 
 export function detectScreenType(text: string): PriceScreenshotScreenType {
-  const hasBuy = BUY_TITLE_RE.test(text);
-  const hasSell = SELL_TITLE_RE.test(text);
+  const normalized = normalizePriceScreenshotOcr(text);
+  const hasBuy = BUY_TITLE_RE.test(normalized);
+  const hasSell = SELL_TITLE_RE.test(normalized);
   if (hasBuy && !hasSell) {
     return 'BUY_GAP';
   }
@@ -108,31 +126,36 @@ export function detectScreenType(text: string): PriceScreenshotScreenType {
   return 'UNKNOWN';
 }
 
+/**
+ * Yellow-box gold per-gram price. Must not use silver /100g or RM 0.00 totals.
+ * Does not truncate at "Silver": two-column OCR often emits Silver before RM 625/g.
+ */
 export function extractGoldPerGramCents(text: string): number | null {
-  const goldIdx = text.search(GOLD_MARKER_RE);
-  if (goldIdx < 0) {
-    return null;
+  const normalized = normalizePriceScreenshotOcr(text);
+  const goldIdx = normalized.search(GOLD_MARKER_RE);
+  const searchFrom = goldIdx >= 0 ? goldIdx : 0;
+  const window = normalized.slice(searchFrom);
+  const priceRe = new RegExp(RM_UNIT_PRICE_SOURCE, 'gi');
+
+  for (const match of window.matchAll(priceRe)) {
+    const unit = match[2].replace(/\s+/g, '').toLowerCase();
+    if (unit.startsWith('100')) {
+      continue;
+    }
+    const cents = parseDecimalRmToCents(match[1]);
+    if (cents != null) {
+      return cents;
+    }
   }
 
-  const silverIdx = text.search(SILVER_MARKER_RE);
-  const goldSection =
-    silverIdx > goldIdx
-      ? text.slice(goldIdx, silverIdx)
-      : text.slice(goldIdx, goldIdx + 400);
-
-  const match = goldSection.match(GOLD_PER_GRAM_RE);
-  if (!match) {
-    return null;
-  }
-
-  return parseDecimalRmToCents(match[1]);
+  return null;
 }
 
 export function extractUpdatedTimestamp(text: string): {
   priceDate: string;
   updatedAt: Date;
 } | null {
-  const match = text.match(UPDATED_RE);
+  const match = normalizePriceScreenshotOcr(text).match(UPDATED_RE);
   if (!match) {
     return null;
   }

@@ -17,6 +17,7 @@ import { MAX_GOLD_DOCUMENT_BYTES } from '../storage/upload-limits';
 import { ConfirmGoldPriceCaptureInput } from './dto/confirm-gold-price-capture.input';
 import { ImageTextExtractorService } from './extraction/image-text.extractor';
 import {
+  compactOcrSnippet,
   compareScreenshotTimestamps,
   parsePublicGoldPriceScreenshot,
   validatePriceSpread,
@@ -310,7 +311,7 @@ export class GoldPriceCaptureService {
         screenshot.extractionError = parsed.errorCode;
         screenshot.warnings = parsed.warnings;
         this.logger.warn(
-          `Price screenshot parse failed captureId=${screenshot.captureId} side=${screenshot.side} code=${parsed.errorCode} pipeline=gold-price-capture`,
+          `Price screenshot parse failed captureId=${screenshot.captureId} side=${screenshot.side} code=${parsed.errorCode} pipeline=gold-price-capture ocrSnippet="${compactOcrSnippet(text)}"`,
         );
         await this.screenshotsRepo.save(screenshot);
         return;
