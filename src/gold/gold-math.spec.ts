@@ -1,9 +1,12 @@
 import {
   averageCostPerGramCents,
+  averageIntsHalfUp,
   derivePricePerGramCents,
   formatGramUnits,
   normalizeStoredWeightGrams,
   parseGramsToUnits,
+  ratioPercent,
+  signedPercentChange,
   sumGramsStrings,
   valueCentsFromGramsAndUnitPrice,
 } from './gold-math';
@@ -56,5 +59,13 @@ describe('gold-math', () => {
   it('computes average cost', () => {
     expect(averageCostPerGramCents(740000, '15.000')).toBe(49333);
     expect(averageCostPerGramCents(0, '0.0000')).toBe(0);
+  });
+
+  it('computes integer averages and signed percent changes without float money math', () => {
+    expect(averageIntsHalfUp([56000, 58000, 57300])).toBe(57100);
+    expect(ratioPercent(5200, 62500)).toBe(8.32);
+    expect(signedPercentChange(56800, 57300)).toBe(0.88);
+    expect(signedPercentChange(57300, 56800)).toBe(-0.87);
+    expect(signedPercentChange(0, 100)).toBeNull();
   });
 });

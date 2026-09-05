@@ -17,6 +17,7 @@ import { CreateGoldPurchaseInput } from './dto/create-gold-purchase.input';
 import { GoldPurchaseFilterInput } from './dto/gold-purchase-filter.input';
 import { SetGoldPriceInput } from './dto/set-gold-price.input';
 import { UpdateGoldPurchaseInput } from './dto/update-gold-purchase.input';
+import { GoldPriceAnalyticsInput } from './dto/gold-price-analytics.input';
 import {
   averageCostPerGramCents,
   derivePricePerGramCents,
@@ -27,7 +28,13 @@ import {
   valueCentsFromGramsAndUnitPrice,
 } from './gold-math';
 import { GoldPrice } from './gold-price.entity';
+import {
+  assertValidAnalyticsInput,
+  computeGoldPriceAnalytics,
+  type GoldPriceObservation,
+} from './gold-price-analytics';
 import { GoldPurchase, type GoldPurchaseSource } from './gold-purchase.entity';
+import { GoldPriceAnalyticsModel } from './models/gold-price-analytics.model';
 import {
   GoldDashboardModel,
   GoldPriceModel,
@@ -349,6 +356,44 @@ export class GoldService {
       take: limit,
     });
     return rows.map((row) => this.toPriceModel(row));
+  }
+
+  async getGoldPriceAnalytics(
+    userId: string,
+    input: GoldPriceAnalyticsInput,
+    now = new Date(),
+  ): Promise<GoldPriceAnalyticsModel> {
+    let range: ReturnType<typeof assertValidAnalyticsInput>;
+    try {
+      range = assertValidAnalyticsInput({
+        range: input.range ?? 'D7',
+        from: input.from,
+        to: input.to,
+      });
+    } catch {
+      throw new BadRequestException(
+        'range must be D7, D30, D90, ALL, or CUSTOM with from/to dates.',
+      );
+    }
+
+    const rows = await this.pricesRepo.find({ where: { userId } });
+    const observations: GoldPriceObservation[] = rows.map((row) => ({
+      id: row.id,
+      priceDate: this.normalizeDate(row.priceDate),
+      capturedPriceAt: row.capturedPriceAt,
+      createdAt: row.createdAt,
+      pgBuyPricePerGramCents: row.pgBuyPricePerGramCents,
+      pgSellPricePerGramCents: row.pgSellPricePerGramCents,
+      source: row.source,
+    }));
+
+    return computeGoldPriceAnalytics(observations, {
+      range,
+      from: input.from,
+      to: input.to,
+      now,
+      todayPriceDate: this.todayDateString(),
+    });
   }
 
   async confirmScreenshotPrice(
