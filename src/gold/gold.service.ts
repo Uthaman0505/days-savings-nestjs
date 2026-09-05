@@ -421,6 +421,40 @@ export class GoldService {
     );
   }
 
+  async getGoldAnalyticsSource(userId: string): Promise<{
+    purchases: GoldPurchaseObservation[];
+    prices: GoldPriceObservation[];
+    latestPrice: {
+      pgBuyPricePerGramCents: number;
+      pgSellPricePerGramCents: number;
+      priceDate: string;
+    } | null;
+    todayPriceDate: string;
+  }> {
+    const [purchases, priceRows, latestPrice] = await Promise.all([
+      this.purchasesRepo.find({
+        where: { userId, isActive: true },
+        order: { purchaseDate: 'DESC', createdAt: 'DESC' },
+      }),
+      this.pricesRepo.find({ where: { userId } }),
+      this.findLatestPriceEntity(userId),
+    ]);
+    return {
+      purchases: purchases.map((row) => this.toPurchaseObservation(row)),
+      prices: priceRows.map((row) => ({
+        id: row.id,
+        priceDate: this.normalizeDate(row.priceDate),
+        capturedPriceAt: row.capturedPriceAt,
+        createdAt: row.createdAt,
+        pgBuyPricePerGramCents: row.pgBuyPricePerGramCents,
+        pgSellPricePerGramCents: row.pgSellPricePerGramCents,
+        source: row.source,
+      })),
+      latestPrice: this.toLatestPriceRef(latestPrice),
+      todayPriceDate: this.todayDateString(),
+    };
+  }
+
   async confirmScreenshotPrice(
     userId: string,
     fields: ConfirmScreenshotPriceFields,
