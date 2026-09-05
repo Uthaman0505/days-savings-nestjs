@@ -11,6 +11,7 @@ import {
   extractGoldPerGramCents,
   extractUpdatedTimestamp,
   parsePublicGoldPriceScreenshot,
+  toPublicGoldSourceMinuteKey,
   validatePriceSpread,
 } from './public-gold-price-screenshot.parser';
 
@@ -63,6 +64,46 @@ describe('PublicGoldPriceScreenshotParser', () => {
     expect(ts?.updatedAt.toISOString()).toBe('2026-08-30T06:37:00.000Z');
   });
 
+  it('parses Public Gold OCR timestamp variants without inventing values', () => {
+    const expectedIso = '2026-09-05T00:18:00.000Z';
+    const variants = [
+      'Prices last updated on 05-Sep-2026 8:18 AM',
+      'Prices last updated on 05-Sep-2026 08:18 AM',
+      'Prices last updated on 05 Sep 2026 8:18 AM',
+      'Prices last updated on 05-Sep-2026 8:18AM',
+      'Prices last updated on 05-Sep-2026 8.18 AM',
+      'Prices last updated on 05-Sep-2026 8:18:37 AM',
+    ];
+    for (const text of variants) {
+      const ts = extractUpdatedTimestamp(text);
+      expect(ts?.updatedAt.toISOString()).toBe(expectedIso);
+      expect(toPublicGoldSourceMinuteKey(ts!.updatedAt)).toBe(
+        '2026-09-05T08:18',
+      );
+    }
+    expect(
+      extractUpdatedTimestamp('Prices last updated on yesterday'),
+    ).toBeNull();
+    expect(
+      extractUpdatedTimestamp('Prices last updated on 05-Sep-2026'),
+    ).toBeNull();
+  });
+
+  it('keeps the gold price when the source timestamp is missing', () => {
+    const text = BUY_GAP_SCREENSHOT_OCR_TEXT.replace(
+      /Prices last updated on[^\n]+/,
+      '',
+    );
+    const result = parsePublicGoldPriceScreenshot(text);
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.pgPricePerGramCents).toBe(62500);
+    expect(result.updatedAt).toBeNull();
+    expect(result.warnings).toContain('PRICE_TIMESTAMP_NOT_FOUND');
+  });
+
   it('accepts matching timestamps from both screenshots', () => {
     const buyTs = extractUpdatedTimestamp(BUY_GAP_SCREENSHOT_OCR_TEXT);
     const sellTs = extractUpdatedTimestamp(SELL_GAP_SCREENSHOT_OCR_TEXT);
@@ -84,6 +125,68 @@ describe('PublicGoldPriceScreenshotParser', () => {
     );
     expect(check.match).toBe(false);
     expect(check.warning).toBe('PRICE_TIMESTAMPS_DIFFER');
+  });
+
+  it('matches the same exact Malaysia source minute', () => {
+    const buy = new Date('2026-09-05T00:18:00.000Z');
+    const sell = new Date('2026-09-05T00:18:00.000Z');
+    const check = compareScreenshotTimestamps(buy, sell);
+    expect(check.match).toBe(true);
+    expect(check.warning).toBeNull();
+    expect(check.buyMinute).toBe('2026-09-05T08:18');
+  });
+
+  it('matches the same minute when seconds differ', () => {
+    const buy = new Date('2026-09-05T00:18:00.000Z');
+    const sell = new Date('2026-09-05T00:18:49.123Z');
+    const check = compareScreenshotTimestamps(buy, sell);
+    expect(check.match).toBe(true);
+    expect(check.warning).toBeNull();
+  });
+
+  it('fails when the source minute differs', () => {
+    const buy = new Date('2026-09-05T00:18:00.000Z');
+    const sell = new Date('2026-09-05T00:19:00.000Z');
+    const check = compareScreenshotTimestamps(buy, sell);
+    expect(check.match).toBe(false);
+    expect(check.warning).toBe('PRICE_TIMESTAMPS_DIFFER');
+  });
+
+  it('fails when the source date differs', () => {
+    const buy = new Date('2026-09-05T00:18:00.000Z');
+    const sell = new Date('2026-09-06T00:18:00.000Z');
+    const check = compareScreenshotTimestamps(buy, sell);
+    expect(check.match).toBe(false);
+    expect(check.warning).toBe('PRICE_TIMESTAMPS_DIFFER');
+  });
+
+  it('treats equivalent Malaysia source minutes as equal after timezone normalization', () => {
+    const fromParser = extractUpdatedTimestamp(
+      'Prices last updated on 05-Sep-2026 8:18 AM',
+    );
+    const storedUtc = new Date('2026-09-05T00:18:00.000Z');
+    const storedWithMs = new Date('2026-09-05T00:18:37.500Z');
+    expect(toPublicGoldSourceMinuteKey(fromParser!.updatedAt)).toBe(
+      '2026-09-05T08:18',
+    );
+    expect(toPublicGoldSourceMinuteKey(storedUtc)).toBe('2026-09-05T08:18');
+    expect(
+      compareScreenshotTimestamps(fromParser!.updatedAt, storedWithMs).match,
+    ).toBe(true);
+  });
+
+  it('uses TIMESTAMP_NOT_FOUND when the BUY source timestamp is missing', () => {
+    const sell = new Date('2026-09-05T00:18:00.000Z');
+    const check = compareScreenshotTimestamps(null, sell);
+    expect(check.match).toBe(false);
+    expect(check.warning).toBe('PRICE_TIMESTAMP_NOT_FOUND');
+  });
+
+  it('uses TIMESTAMP_NOT_FOUND when the SELL source timestamp is missing', () => {
+    const buy = new Date('2026-09-05T00:18:00.000Z');
+    const check = compareScreenshotTimestamps(buy, null);
+    expect(check.match).toBe(false);
+    expect(check.warning).toBe('PRICE_TIMESTAMP_NOT_FOUND');
   });
 
   it('validates PG SELL >= PG BUY spread for real sample', () => {

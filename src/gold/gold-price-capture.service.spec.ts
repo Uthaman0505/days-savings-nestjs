@@ -39,9 +39,9 @@ describe('GoldPriceCaptureService', () => {
   };
   let storage: { putObject: jest.Mock; deleteObject: jest.Mock };
   let ocr: { extractTextFromImageBuffer: jest.Mock };
-  let extractionService: {
-    processDocumentExtraction: jest.Mock;
-  };
+  let extractionService: { processDocumentExtraction: jest.Mock };
+  let goldService: { confirmScreenshotPrice: jest.Mock };
+  let dataSource: { transaction: jest.Mock };
 
   const now = new Date('2026-08-30T06:37:00.000Z');
 
@@ -70,6 +70,39 @@ describe('GoldPriceCaptureService', () => {
     screenshots = [];
     extractionService = {
       processDocumentExtraction: jest.fn(),
+    };
+    goldService = {
+      confirmScreenshotPrice: jest.fn().mockResolvedValue({ id: 'gp-1' }),
+    };
+    dataSource = {
+      transaction: jest.fn(async (work: (manager: unknown) => unknown) =>
+        work({
+          findOne: async (
+            entity: unknown,
+            opts: { where: Partial<GoldPriceCapture> },
+          ) => {
+            if (entity === GoldPriceCapture) {
+              return capturesRepo.findOne(opts);
+            }
+            return null;
+          },
+          find: async (
+            entity: unknown,
+            opts: { where: Partial<GoldPriceScreenshot> },
+          ) => {
+            if (entity === GoldPriceScreenshot) {
+              return screenshotsRepo.find(opts);
+            }
+            return [];
+          },
+          save: async (entity: unknown, row: GoldPriceCapture) => {
+            if (entity === GoldPriceCapture) {
+              return capturesRepo.save(row);
+            }
+            return row;
+          },
+        }),
+      ),
     };
 
     capturesRepo = {
@@ -164,11 +197,8 @@ describe('GoldPriceCaptureService', () => {
         },
         { provide: ObjectStorageService, useValue: storage },
         { provide: ImageTextExtractorService, useValue: ocr },
-        {
-          provide: GoldService,
-          useValue: { confirmScreenshotPrice: jest.fn() },
-        },
-        { provide: DataSource, useValue: { transaction: jest.fn() } },
+        { provide: GoldService, useValue: goldService },
+        { provide: DataSource, useValue: dataSource },
       ],
     }).compile();
 
@@ -315,5 +345,167 @@ describe('GoldPriceCaptureService', () => {
         file(PNG_A, 'buy.png'),
       ),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('does not flag matching Public Gold source minutes as a timestamp mismatch', async () => {
+    ocr.extractTextFromImageBuffer
+      .mockResolvedValueOnce(BUY_GAP_SCREENSHOT_OCR_TEXT)
+      .mockResolvedValueOnce(SELL_GAP_SCREENSHOT_OCR_TEXT);
+
+    await service.uploadScreenshot(
+      'user-a',
+      'cap-1',
+      'BUY',
+      file(PNG_A, 'buy.png'),
+    );
+    const result = await service.uploadScreenshot(
+      'user-a',
+      'cap-1',
+      'SELL',
+      file(PNG_B, 'sell.png'),
+    );
+
+    expect(result.capture.pgSellPricePerGramCents).toBe(62500);
+    expect(result.capture.pgBuyPricePerGramCents).toBe(57300);
+    expect(result.capture.warnings).not.toContain('PRICE_TIMESTAMPS_DIFFER');
+    expect(result.capture.status).toBe('READY');
+  });
+
+  it('keeps extracted prices when timestamps differ by a minute', async () => {
+    ocr.extractTextFromImageBuffer
+      .mockResolvedValueOnce(BUY_GAP_SCREENSHOT_OCR_TEXT)
+      .mockResolvedValueOnce(
+        SELL_GAP_SCREENSHOT_OCR_TEXT.replace('2:37 PM', '2:38 PM'),
+      );
+
+    await service.uploadScreenshot(
+      'user-a',
+      'cap-1',
+      'BUY',
+      file(PNG_A, 'buy.png'),
+    );
+    const result = await service.uploadScreenshot(
+      'user-a',
+      'cap-1',
+      'SELL',
+      file(PNG_B, 'sell.png'),
+    );
+
+    expect(result.capture.pgSellPricePerGramCents).toBe(62500);
+    expect(result.capture.pgBuyPricePerGramCents).toBe(57300);
+    expect(result.capture.warnings).toContain('PRICE_TIMESTAMPS_DIFFER');
+    expect(result.capture.status).toBe('NEEDS_REVIEW');
+  });
+
+  it('uses PRICE_TIMESTAMP_NOT_FOUND when one screenshot has a price but no timestamp', async () => {
+    ocr.extractTextFromImageBuffer
+      .mockResolvedValueOnce(BUY_GAP_SCREENSHOT_OCR_TEXT)
+      .mockResolvedValueOnce(
+        SELL_GAP_SCREENSHOT_OCR_TEXT.replace(
+          /Prices last updated on[^\n]+/,
+          '',
+        ),
+      );
+
+    await service.uploadScreenshot(
+      'user-a',
+      'cap-1',
+      'BUY',
+      file(PNG_A, 'buy.png'),
+    );
+    const result = await service.uploadScreenshot(
+      'user-a',
+      'cap-1',
+      'SELL',
+      file(PNG_B, 'sell.png'),
+    );
+
+    expect(result.capture.pgSellPricePerGramCents).toBe(62500);
+    expect(result.capture.pgBuyPricePerGramCents).toBe(57300);
+    expect(result.capture.warnings).toContain('PRICE_TIMESTAMP_NOT_FOUND');
+    expect(result.capture.warnings).not.toContain('PRICE_TIMESTAMPS_DIFFER');
+  });
+
+  it('rejects confirmation when timestamps genuinely differ', async () => {
+    ocr.extractTextFromImageBuffer
+      .mockResolvedValueOnce(BUY_GAP_SCREENSHOT_OCR_TEXT)
+      .mockResolvedValueOnce(
+        SELL_GAP_SCREENSHOT_OCR_TEXT.replace('2:37 PM', '2:38 PM'),
+      );
+
+    await service.uploadScreenshot(
+      'user-a',
+      'cap-1',
+      'BUY',
+      file(PNG_A, 'buy.png'),
+    );
+    await service.uploadScreenshot(
+      'user-a',
+      'cap-1',
+      'SELL',
+      file(PNG_B, 'sell.png'),
+    );
+
+    await expect(
+      service.confirmCapture('user-a', { capture_id: 'cap-1' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(goldService.confirmScreenshotPrice).not.toHaveBeenCalled();
+  });
+
+  it('rejects confirmation when a source timestamp is missing', async () => {
+    ocr.extractTextFromImageBuffer
+      .mockResolvedValueOnce(BUY_GAP_SCREENSHOT_OCR_TEXT)
+      .mockResolvedValueOnce(
+        SELL_GAP_SCREENSHOT_OCR_TEXT.replace(
+          /Prices last updated on[^\n]+/,
+          '',
+        ),
+      );
+
+    await service.uploadScreenshot(
+      'user-a',
+      'cap-1',
+      'BUY',
+      file(PNG_A, 'buy.png'),
+    );
+    await service.uploadScreenshot(
+      'user-a',
+      'cap-1',
+      'SELL',
+      file(PNG_B, 'sell.png'),
+    );
+
+    await expect(
+      service.confirmCapture('user-a', { capture_id: 'cap-1' }),
+    ).rejects.toThrow(/Could not detect Public Gold update time/);
+    expect(goldService.confirmScreenshotPrice).not.toHaveBeenCalled();
+  });
+
+  it('confirms matching minute-normalized timestamps even if seconds differ', async () => {
+    ocr.extractTextFromImageBuffer
+      .mockResolvedValueOnce(BUY_GAP_SCREENSHOT_OCR_TEXT)
+      .mockResolvedValueOnce(SELL_GAP_SCREENSHOT_OCR_TEXT);
+
+    await service.uploadScreenshot(
+      'user-a',
+      'cap-1',
+      'BUY',
+      file(PNG_A, 'buy.png'),
+    );
+    await service.uploadScreenshot(
+      'user-a',
+      'cap-1',
+      'SELL',
+      file(PNG_B, 'sell.png'),
+    );
+    screenshots.find((s) => s.side === 'SELL')!.extractedUpdatedAt = new Date(
+      '2026-08-30T06:37:49.000Z',
+    );
+
+    const confirmed = await service.confirmCapture('user-a', {
+      capture_id: 'cap-1',
+    });
+    expect(confirmed.status).toBe('CONFIRMED');
+    expect(goldService.confirmScreenshotPrice).toHaveBeenCalled();
   });
 });

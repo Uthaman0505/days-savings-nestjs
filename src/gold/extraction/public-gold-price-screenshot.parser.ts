@@ -9,8 +9,8 @@ export type ParsedPriceScreenshot = {
   screenType: PriceScreenshotScreenType;
   priceRole: PriceScreenshotPriceRole;
   pgPricePerGramCents: number;
-  priceDate: string;
-  updatedAt: Date;
+  priceDate: string | null;
+  updatedAt: Date | null;
   warnings: string[];
 };
 
@@ -43,9 +43,8 @@ const BUY_TITLE_RE = /\bBuy\s+GAP\s*(?:\/\s*SAP)?\b/i;
 const SELL_TITLE_RE = /\bSell\s+GAP\s*(?:\/\s*SAP)?\b/i;
 /** Yellow card: Gold (Au 999.9). Allows "Gold Silver\\n(Au 999.9)" two-column OCR. */
 const GOLD_MARKER_RE = /Gold[\s\S]{0,40}?\(\s*Au\s*999(?:[.\s,]?9)?\s*\)/i;
-/** White card: Silver (Ag 999.9). Older OCR may still emit Si 999. */
 const UPDATED_RE =
-  /Prices\s+last\s+updated\s+on\s+(\d{1,2})-([A-Za-z]{3})-(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)/i;
+  /Prices\s+last\s+updated\s+on\s+(\d{1,2})[-\s]([A-Za-z]{3})[-\s](\d{4})\s+(\d{1,2})[:.](\d{2})(?::\d{2})?\s*(AM|PM)/i;
 
 /**
  * Gold yellow-box unit is /g. Tesseract often reads /g as /9.
@@ -96,9 +95,13 @@ export function parsePublicGoldPriceScreenshot(
   const timestamp = extractUpdatedTimestamp(text);
   if (!timestamp) {
     return {
-      ok: false,
-      errorCode: 'PRICE_TIMESTAMP_NOT_FOUND',
-      warnings,
+      ok: true,
+      screenType,
+      priceRole,
+      pgPricePerGramCents: goldPrice,
+      priceDate: null,
+      updatedAt: null,
+      warnings: ['PRICE_TIMESTAMP_NOT_FOUND'],
     };
   }
 
@@ -171,6 +174,17 @@ export function extractUpdatedTimestamp(text: string): {
     return null;
   }
 
+  if (
+    day < 1 ||
+    day > 31 ||
+    minute < 0 ||
+    minute > 59 ||
+    hour < 1 ||
+    hour > 12
+  ) {
+    return null;
+  }
+
   if (ampm === 'PM' && hour < 12) {
     hour += 12;
   }
@@ -179,7 +193,7 @@ export function extractUpdatedTimestamp(text: string): {
   }
 
   const priceDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  // Public Gold timestamps are Malaysia local (UTC+8).
+  // Public Gold wall time is Malaysia (UTC+8, no DST). Store UTC instant for that minute.
   const updatedAt = new Date(
     Date.UTC(year, month - 1, day, hour - 8, minute, 0, 0),
   );
@@ -187,17 +201,70 @@ export function extractUpdatedTimestamp(text: string): {
   return { priceDate, updatedAt };
 }
 
+function toDateOrNull(value: Date | string | null | undefined): Date | null {
+  if (value == null) {
+    return null;
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/** Malaysia source minute `YYYY-MM-DDTHH:mm`. Ignores seconds/ms and host TZ. */
+export function toPublicGoldSourceMinuteKey(
+  value: Date | string,
+): string | null {
+  const date = toDateOrNull(value);
+  if (!date) {
+    return null;
+  }
+  const myt = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+  const y = myt.getUTCFullYear();
+  const m = String(myt.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(myt.getUTCDate()).padStart(2, '0');
+  const h = String(myt.getUTCHours()).padStart(2, '0');
+  const min = String(myt.getUTCMinutes()).padStart(2, '0');
+  return `${y}-${m}-${d}T${h}:${min}`;
+}
+
 export function compareScreenshotTimestamps(
-  buyUpdatedAt: Date | null,
-  sellUpdatedAt: Date | null,
-): { match: boolean; warning: string | null } {
-  if (!buyUpdatedAt || !sellUpdatedAt) {
-    return { match: true, warning: null };
+  buyUpdatedAt: Date | string | null | undefined,
+  sellUpdatedAt: Date | string | null | undefined,
+): {
+  match: boolean;
+  warning: string | null;
+  buyMinute: string | null;
+  sellMinute: string | null;
+} {
+  const buyDate = toDateOrNull(buyUpdatedAt);
+  const sellDate = toDateOrNull(sellUpdatedAt);
+  const buyMinute = buyDate ? toPublicGoldSourceMinuteKey(buyDate) : null;
+  const sellMinute = sellDate ? toPublicGoldSourceMinuteKey(sellDate) : null;
+
+  if (!buyMinute && !sellMinute) {
+    return {
+      match: false,
+      warning: 'PRICE_TIMESTAMP_NOT_FOUND',
+      buyMinute,
+      sellMinute,
+    };
   }
-  if (buyUpdatedAt.getTime() !== sellUpdatedAt.getTime()) {
-    return { match: false, warning: 'PRICE_TIMESTAMPS_DIFFER' };
+  if (!buyMinute || !sellMinute) {
+    return {
+      match: false,
+      warning: 'PRICE_TIMESTAMP_NOT_FOUND',
+      buyMinute,
+      sellMinute,
+    };
   }
-  return { match: true, warning: null };
+  if (buyMinute !== sellMinute) {
+    return {
+      match: false,
+      warning: 'PRICE_TIMESTAMPS_DIFFER',
+      buyMinute,
+      sellMinute,
+    };
+  }
+  return { match: true, warning: null, buyMinute, sellMinute };
 }
 
 export function validatePriceSpread(
