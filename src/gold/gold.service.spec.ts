@@ -600,4 +600,63 @@ describe('GoldService', () => {
       expect(result.dataQuality.hasCurrentPrice).toBe(false);
     });
   });
+
+  describe('getGoldAnalyticsSource', () => {
+    it('loads only the authenticated user purchases and prices', async () => {
+      purchasesRepo.find.mockImplementation(
+        async ({ where }: { where: { userId: string; isActive: boolean } }) => {
+          if (where.userId !== 'user-a' || where.isActive !== true) {
+            return [];
+          }
+          return [purchase({ id: 'owned' })];
+        },
+      );
+      pricesRepo.find.mockImplementation(
+        async ({ where }: { where: { userId: string } }) => {
+          if (where.userId !== 'user-a') {
+            return [];
+          }
+          return [price({ id: 'owned-price', capturedPriceAt: now })];
+        },
+      );
+      pricesRepo.createQueryBuilder.mockImplementation(() => {
+        const qb: {
+          _userId?: string;
+          where: jest.Mock;
+          andWhere: jest.Mock;
+          orderBy: jest.Mock;
+          addOrderBy: jest.Mock;
+          getOne: jest.Mock;
+        } = {
+          where: jest.fn((_sql: string, params: { userId: string }) => {
+            qb._userId = params.userId;
+            return qb;
+          }),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          addOrderBy: jest.fn().mockReturnThis(),
+          getOne: jest.fn(async () =>
+            qb._userId === 'user-a'
+              ? price({ id: 'owned-price', capturedPriceAt: now })
+              : null,
+          ),
+        };
+        return qb;
+      });
+
+      const mine = await service.getGoldAnalyticsSource('user-a');
+      const other = await service.getGoldAnalyticsSource('user-b');
+
+      expect(purchasesRepo.find).toHaveBeenCalledWith({
+        where: { userId: 'user-a', isActive: true },
+        order: { purchaseDate: 'DESC', createdAt: 'DESC' },
+      });
+      expect(mine.purchases).toHaveLength(1);
+      expect(mine.prices).toHaveLength(1);
+      expect(mine.latestPrice?.pgBuyPricePerGramCents).toBe(52000);
+      expect(other.purchases).toHaveLength(0);
+      expect(other.prices).toHaveLength(0);
+      expect(other.latestPrice).toBeNull();
+    });
+  });
 });

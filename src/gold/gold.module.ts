@@ -14,6 +14,8 @@ import { GoldPrice } from './gold-price.entity';
 import { GoldPurchase } from './gold-purchase.entity';
 import { GoldResolver } from './gold.resolver';
 import { GoldService } from './gold.service';
+import { GoldReportController } from './reports/gold-report.controller';
+import { GoldReportService } from './reports/gold-report.service';
 
 @Module({
   imports: [
@@ -26,7 +28,11 @@ import { GoldService } from './gold.service';
       GoldPriceScreenshot,
     ]),
   ],
-  controllers: [GoldDocumentController, GoldPriceCaptureController],
+  controllers: [
+    GoldDocumentController,
+    GoldPriceCaptureController,
+    GoldReportController,
+  ],
   providers: [
     GoldService,
     GoldDocumentService,
@@ -34,6 +40,7 @@ import { GoldService } from './gold.service';
     GoldPriceCaptureService,
     ImageTextExtractorService,
     GoldResolver,
+    GoldReportService,
   ],
   exports: [
     GoldService,
