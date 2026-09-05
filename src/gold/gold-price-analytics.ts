@@ -206,7 +206,7 @@ function toChange(fromCents: number, toCents: number): GoldPriceChange {
   };
 }
 
-function rangeWindow(
+export function goldAnalyticsRangeWindow(
   range: GoldPriceHistoryRange,
   todayMyt: string,
   from?: string,
@@ -225,7 +225,7 @@ function rangeWindow(
   };
 }
 
-function hasSufficientHistory(
+export function goldAnalyticsHasSufficientHistory(
   range: GoldPriceHistoryRange,
   sampleCount: number,
   daysWithData: number,
@@ -413,7 +413,7 @@ export function computeGoldPriceAnalytics(
   const todayMyt = malaysiaCalendarDateFromInstant(now);
   const todayPriceDate = input.todayPriceDate ?? todayMyt;
   const range = input.range;
-  const { fromDate, toDate } = rangeWindow(
+  const { fromDate, toDate } = goldAnalyticsRangeWindow(
     range,
     todayMyt,
     input.from,
@@ -452,7 +452,7 @@ export function computeGoldPriceAnalytics(
     toDate,
     hasSufficientHistory: false,
   };
-  quality.hasSufficientHistory = hasSufficientHistory(
+  quality.hasSufficientHistory = goldAnalyticsHasSufficientHistory(
     range,
     quality.sampleCount,
     quality.daysWithData,

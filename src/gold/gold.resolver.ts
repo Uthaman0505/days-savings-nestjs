@@ -4,6 +4,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { JwtUser } from '../auth/jwt.strategy';
 import { GoldPriceAnalyticsInput } from './dto/gold-price-analytics.input';
+import { GoldPortfolioAnalyticsInput } from './dto/gold-portfolio-analytics.input';
 import { ConfirmGoldPriceCaptureInput } from './dto/confirm-gold-price-capture.input';
 import { ConfirmGoldExtractionItemInput } from './dto/confirm-gold-extraction-item.input';
 import { CreateGoldPurchaseInput } from './dto/create-gold-purchase.input';
@@ -24,6 +25,7 @@ import {
   GoldPriceAnalyticsModel,
   GoldPriceHistoryPointModel,
 } from './models/gold-price-analytics.model';
+import { GoldPortfolioAnalyticsModel } from './models/gold-portfolio-analytics.model';
 import { GoldPriceCaptureModel } from './models/gold-price-capture.model';
 import {
   GoldDashboardModel,
@@ -98,6 +100,19 @@ export class GoldResolver {
       input ?? { range: 'ALL' },
     );
     return analytics.history;
+  }
+
+  @Query(() => GoldPortfolioAnalyticsModel, { name: 'goldPortfolioAnalytics' })
+  @UseGuards(JwtAuthGuard)
+  goldPortfolioAnalytics(
+    @CurrentUser() user: JwtUser,
+    @Args('input', { type: () => GoldPortfolioAnalyticsInput, nullable: true })
+    input?: GoldPortfolioAnalyticsInput,
+  ): Promise<GoldPortfolioAnalyticsModel> {
+    return this.goldService.getGoldPortfolioAnalytics(
+      user.id,
+      input ?? { range: 'D7' },
+    );
   }
 
   @Mutation(() => GoldPurchaseModel, { name: 'createGoldPurchase' })

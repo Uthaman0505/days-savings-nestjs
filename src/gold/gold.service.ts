@@ -18,13 +18,12 @@ import { GoldPurchaseFilterInput } from './dto/gold-purchase-filter.input';
 import { SetGoldPriceInput } from './dto/set-gold-price.input';
 import { UpdateGoldPurchaseInput } from './dto/update-gold-purchase.input';
 import { GoldPriceAnalyticsInput } from './dto/gold-price-analytics.input';
+import { GoldPortfolioAnalyticsInput } from './dto/gold-portfolio-analytics.input';
 import {
-  averageCostPerGramCents,
   derivePricePerGramCents,
   formatGramUnits,
   normalizeStoredWeightGrams,
   parseGramsToUnits,
-  sumGramsStrings,
   valueCentsFromGramsAndUnitPrice,
 } from './gold-math';
 import { GoldPrice } from './gold-price.entity';
@@ -33,8 +32,15 @@ import {
   computeGoldPriceAnalytics,
   type GoldPriceObservation,
 } from './gold-price-analytics';
+import {
+  assertValidPortfolioAnalyticsInput,
+  computeGoldHoldingsSummary,
+  computeGoldPortfolioAnalytics,
+  type GoldPurchaseObservation,
+} from './gold-portfolio-analytics';
 import { GoldPurchase, type GoldPurchaseSource } from './gold-purchase.entity';
 import { GoldPriceAnalyticsModel } from './models/gold-price-analytics.model';
+import { GoldPortfolioAnalyticsModel } from './models/gold-portfolio-analytics.model';
 import {
   GoldDashboardModel,
   GoldPriceModel,
@@ -77,56 +83,24 @@ export class GoldService {
       order: { purchaseDate: 'DESC', createdAt: 'DESC' },
     });
     const latestPrice = await this.findLatestPriceEntity(userId);
-
-    const totalInvestedCents = purchases.reduce(
-      (sum, p) => sum + p.amountPaidCents,
-      0,
+    const summary = computeGoldHoldingsSummary(
+      purchases.map((row) => this.toPurchaseObservation(row)),
+      this.toLatestPriceRef(latestPrice),
     );
-    const totalGrams =
-      purchases.length === 0
-        ? '0.0000'
-        : sumGramsStrings(
-            purchases.map((p) => normalizeStoredWeightGrams(p.weightGrams)),
-          );
-
-    const hasGrams = purchases.length > 0 && totalGrams !== '0.0000';
-    const averageCost = hasGrams
-      ? averageCostPerGramCents(totalInvestedCents, totalGrams)
-      : 0;
-
-    const hasPrice = latestPrice != null;
-    let currentValueCents = 0;
-    let unrealizedPlCents = 0;
-    let unrealizedPlPercent = 0;
-
-    if (hasPrice && hasGrams) {
-      // CRITICAL: portfolio valuation uses PG BUY (liquidation).
-      currentValueCents = valueCentsFromGramsAndUnitPrice(
-        totalGrams,
-        latestPrice.pgBuyPricePerGramCents,
-      );
-      unrealizedPlCents = currentValueCents - totalInvestedCents;
-      if (totalInvestedCents > 0) {
-        unrealizedPlPercent = (unrealizedPlCents / totalInvestedCents) * 100;
-      }
-    }
 
     return {
-      totalGrams,
-      totalInvestedCents,
-      averageCostPerGramCents: averageCost,
-      currentPgBuyPricePerGramCents: hasPrice
-        ? latestPrice.pgBuyPricePerGramCents
-        : null,
-      currentPgSellPricePerGramCents: hasPrice
-        ? latestPrice.pgSellPricePerGramCents
-        : null,
-      currentValueCents,
-      unrealizedPlCents,
-      unrealizedPlPercent,
-      purchaseCount: purchases.length,
-      priceAsOf: hasPrice ? latestPrice.priceDate : null,
-      hasPrice,
+      totalGrams: summary.totalGrams,
+      totalInvestedCents: summary.totalInvestedCents,
+      averageCostPerGramCents: summary.averageCostPerGramCents,
+      currentPgBuyPricePerGramCents: summary.currentPgBuyCents,
+      currentPgSellPricePerGramCents: summary.currentPgSellCents,
+      // Dashboard GraphQL stays non-null; analytics exposes unavailable as null.
+      currentValueCents: summary.currentValueCents ?? 0,
+      unrealizedPlCents: summary.unrealizedPlCents ?? 0,
+      unrealizedPlPercent: summary.unrealizedPlPercent ?? 0,
+      purchaseCount: summary.purchaseCount,
+      priceAsOf: summary.priceAsOf,
+      hasPrice: summary.hasPrice,
     };
   }
 
@@ -396,6 +370,57 @@ export class GoldService {
     });
   }
 
+  async getGoldPortfolioAnalytics(
+    userId: string,
+    input: GoldPortfolioAnalyticsInput,
+    now = new Date(),
+  ): Promise<GoldPortfolioAnalyticsModel> {
+    let range: ReturnType<typeof assertValidPortfolioAnalyticsInput>;
+    try {
+      range = assertValidPortfolioAnalyticsInput({
+        range: input.range ?? 'D7',
+        from: input.from,
+        to: input.to,
+      });
+    } catch {
+      throw new BadRequestException(
+        'range must be D7, D30, D90, ALL, or CUSTOM with from/to dates.',
+      );
+    }
+
+    const [purchases, priceRows, latestPrice] = await Promise.all([
+      this.purchasesRepo.find({
+        where: { userId, isActive: true },
+        order: { purchaseDate: 'DESC', createdAt: 'DESC' },
+      }),
+      this.pricesRepo.find({ where: { userId } }),
+      this.findLatestPriceEntity(userId),
+    ]);
+
+    const observations: GoldPriceObservation[] = priceRows.map((row) => ({
+      id: row.id,
+      priceDate: this.normalizeDate(row.priceDate),
+      capturedPriceAt: row.capturedPriceAt,
+      createdAt: row.createdAt,
+      pgBuyPricePerGramCents: row.pgBuyPricePerGramCents,
+      pgSellPricePerGramCents: row.pgSellPricePerGramCents,
+      source: row.source,
+    }));
+
+    return computeGoldPortfolioAnalytics(
+      purchases.map((row) => this.toPurchaseObservation(row)),
+      observations,
+      {
+        range,
+        from: input.from,
+        to: input.to,
+        now,
+        todayPriceDate: this.todayDateString(),
+        latestPrice: this.toLatestPriceRef(latestPrice),
+      },
+    );
+  }
+
   async confirmScreenshotPrice(
     userId: string,
     fields: ConfirmScreenshotPriceFields,
@@ -635,5 +660,34 @@ export class GoldService {
       return `${y}-${m}-${d}`;
     }
     return String(value).slice(0, 10);
+  }
+
+  private toPurchaseObservation(row: GoldPurchase): GoldPurchaseObservation {
+    return {
+      id: row.id,
+      purchaseDate: this.normalizeDate(row.purchaseDate),
+      weightGrams: row.weightGrams,
+      amountPaidCents: row.amountPaidCents,
+      pricePerGramCents: row.pricePerGramCents,
+      source: row.source,
+      referenceNumber: row.referenceNumber,
+      createdAt: row.createdAt,
+      isActive: row.isActive,
+    };
+  }
+
+  private toLatestPriceRef(row: GoldPrice | null): {
+    pgBuyPricePerGramCents: number;
+    pgSellPricePerGramCents: number;
+    priceDate: string;
+  } | null {
+    if (!row) {
+      return null;
+    }
+    return {
+      pgBuyPricePerGramCents: row.pgBuyPricePerGramCents,
+      pgSellPricePerGramCents: row.pgSellPricePerGramCents,
+      priceDate: this.normalizeDate(row.priceDate),
+    };
   }
 }
