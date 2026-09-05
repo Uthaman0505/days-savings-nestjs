@@ -183,7 +183,7 @@ describe('GoldService', () => {
       expect(dash.currentValueCents).toBe(780000);
       expect(dash.currentValueCents).not.toBe(810000);
       expect(dash.unrealizedPlCents).toBe(40000);
-      expect(dash.unrealizedPlPercent).toBeCloseTo(5.405405, 4);
+      expect(dash.unrealizedPlPercent).toBe(5.41);
     });
 
     it('Test D — soft-deleted purchase excluded from totals', async () => {
@@ -469,6 +469,135 @@ describe('GoldService', () => {
       expect(result.latest).toBeNull();
       expect(result.vsPreviousBuy).toBeNull();
       expect(result.dataQuality.hasSufficientHistory).toBe(false);
+    });
+  });
+
+  describe('getGoldPortfolioAnalytics', () => {
+    it('scopes purchases and prices to the authenticated user', async () => {
+      purchasesRepo.find.mockImplementation(
+        async ({ where }: { where: { userId: string; isActive: boolean } }) => {
+          if (where.userId !== 'user-a' || where.isActive !== true) {
+            return [];
+          }
+          return [purchase({ id: 'owned' })];
+        },
+      );
+      pricesRepo.find.mockImplementation(
+        async ({ where }: { where: { userId: string } }) => {
+          if (where.userId !== 'user-a') {
+            return [];
+          }
+          return [
+            price({
+              id: 'owned-price',
+              capturedPriceAt: now,
+            }),
+          ];
+        },
+      );
+      pricesRepo.createQueryBuilder.mockImplementation(() => {
+        const qb: {
+          _userId?: string;
+          where: jest.Mock;
+          andWhere: jest.Mock;
+          orderBy: jest.Mock;
+          addOrderBy: jest.Mock;
+          getOne: jest.Mock;
+        } = {
+          where: jest.fn((_sql: string, params: { userId: string }) => {
+            qb._userId = params.userId;
+            return qb;
+          }),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          addOrderBy: jest.fn().mockReturnThis(),
+          getOne: jest.fn(async () =>
+            qb._userId === 'user-a'
+              ? price({
+                  id: 'owned-price',
+                  capturedPriceAt: now,
+                })
+              : null,
+          ),
+        };
+        return qb;
+      });
+
+      const mine = await service.getGoldPortfolioAnalytics(
+        'user-a',
+        { range: 'ALL' },
+        now,
+      );
+      const other = await service.getGoldPortfolioAnalytics(
+        'user-b',
+        { range: 'ALL' },
+        now,
+      );
+
+      expect(purchasesRepo.find).toHaveBeenCalledWith({
+        where: { userId: 'user-a', isActive: true },
+        order: { purchaseDate: 'DESC', createdAt: 'DESC' },
+      });
+      expect(mine.summary.purchaseCount).toBe(1);
+      expect(mine.history.some((row) => row.priceId === 'owned-price')).toBe(
+        true,
+      );
+      expect(other.summary.purchaseCount).toBe(0);
+      expect(other.history).toEqual([]);
+    });
+
+    it('excludes inactive purchases and includes them again after restore', async () => {
+      const active = purchase({ id: 'keep', amountPaidCents: 500000 });
+      const restored = purchase({
+        id: 'back',
+        amountPaidCents: 240000,
+        weightGrams: '5.000',
+      });
+      purchasesRepo.find
+        .mockResolvedValueOnce([active])
+        .mockResolvedValueOnce([active, restored]);
+      pricesRepo.find.mockResolvedValue([
+        price({
+          capturedPriceAt: now,
+        }),
+      ]);
+      pricesRepo.findOne.mockResolvedValue(
+        price({
+          capturedPriceAt: now,
+        }),
+      );
+
+      const afterDelete = await service.getGoldPortfolioAnalytics(
+        'user-a',
+        { range: 'ALL' },
+        now,
+      );
+      const afterRestore = await service.getGoldPortfolioAnalytics(
+        'user-a',
+        { range: 'ALL' },
+        now,
+      );
+
+      expect(afterDelete.summary.purchaseCount).toBe(1);
+      expect(afterDelete.summary.totalInvestedCents).toBe(500000);
+      expect(afterRestore.summary.purchaseCount).toBe(2);
+      expect(afterRestore.summary.totalInvestedCents).toBe(740000);
+    });
+
+    it('does not invent a current value when price is missing', async () => {
+      purchasesRepo.find.mockResolvedValue([purchase({ id: 'owned' })]);
+      pricesRepo.find.mockResolvedValue([]);
+      pricesRepo.findOne.mockResolvedValue(null);
+
+      const result = await service.getGoldPortfolioAnalytics(
+        'user-a',
+        { range: 'ALL' },
+        now,
+      );
+      expect(result.summary.hasPrice).toBe(false);
+      expect(result.summary.currentValueCents).toBeNull();
+      expect(result.summary.unrealizedPlPercent).toBeNull();
+      expect(result.dataQuality.hasCurrentPrice).toBe(false);
     });
   });
 });
