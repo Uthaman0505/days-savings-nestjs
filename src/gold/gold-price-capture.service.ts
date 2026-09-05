@@ -20,6 +20,7 @@ import {
   compactOcrSnippet,
   compareScreenshotTimestamps,
   parsePublicGoldPriceScreenshot,
+  toPublicGoldSourceMinuteKey,
   validatePriceSpread,
 } from './extraction/public-gold-price-screenshot.parser';
 import { GoldPriceCapture } from './gold-price-capture.entity';
@@ -249,7 +250,12 @@ export class GoldPriceCaptureService {
         buyShot?.extractedUpdatedAt ?? null,
         sellShot?.extractedUpdatedAt ?? null,
       );
-      if (!tsCheck.match) {
+      if (tsCheck.warning === 'PRICE_TIMESTAMP_NOT_FOUND') {
+        throw new BadRequestException(
+          'Could not detect Public Gold update time for this screenshot.',
+        );
+      }
+      if (!tsCheck.match || tsCheck.warning === 'PRICE_TIMESTAMPS_DIFFER') {
         throw new BadRequestException(
           'Buy and Sell screenshot timestamps must match before confirmation.',
         );
@@ -329,6 +335,9 @@ export class GoldPriceCaptureService {
       screenshot.extractionStatus = 'EXTRACTED';
       screenshot.extractionError = null;
       screenshot.warnings = warnings.length > 0 ? warnings : null;
+      this.logger.log(
+        `[GoldPriceCapture] ${screenshot.side} sourceTimestamp=${parsed.updatedAt?.toISOString() ?? 'none'} sourceMinute=${parsed.updatedAt ? toPublicGoldSourceMinuteKey(parsed.updatedAt) : 'none'} captureId=${screenshot.captureId}`,
+      );
       await this.screenshotsRepo.save(screenshot);
     } catch (err) {
       const code = err instanceof Error ? err.message : 'EXTRACTION_FAILED';
@@ -362,13 +371,29 @@ export class GoldPriceCaptureService {
       capture.pgBuyPricePerGramCents = sellShot.extractedPgPricePerGramCents;
     }
 
-    const tsCheck = compareScreenshotTimestamps(
-      buyShot?.extractedUpdatedAt ?? null,
-      sellShot?.extractedUpdatedAt ?? null,
-    );
-    if (tsCheck.warning) {
+    const tsCheck =
+      buyShot && sellShot
+        ? compareScreenshotTimestamps(
+            buyShot.extractedUpdatedAt ?? null,
+            sellShot.extractedUpdatedAt ?? null,
+          )
+        : {
+            match: true,
+            warning: null as string | null,
+            buyMinute: buyShot?.extractedUpdatedAt
+              ? toPublicGoldSourceMinuteKey(buyShot.extractedUpdatedAt)
+              : null,
+            sellMinute: sellShot?.extractedUpdatedAt
+              ? toPublicGoldSourceMinuteKey(sellShot.extractedUpdatedAt)
+              : null,
+          };
+    if (buyShot && sellShot && tsCheck.warning) {
       warnings.push(tsCheck.warning);
     }
+
+    this.logger.log(
+      `[GoldPriceCapture] BUY sourceTimestamp=${buyShot?.extractedUpdatedAt?.toISOString() ?? 'none'} SELL sourceTimestamp=${sellShot?.extractedUpdatedAt?.toISOString() ?? 'none'} buyMinute=${tsCheck.buyMinute ?? 'none'} sellMinute=${tsCheck.sellMinute ?? 'none'} match=${tsCheck.match} captureId=${captureId}`,
+    );
 
     const updatedAt =
       buyShot?.extractedUpdatedAt ?? sellShot?.extractedUpdatedAt;
@@ -452,11 +477,8 @@ export class GoldPriceCaptureService {
     if (!value) {
       return null;
     }
-    const d = new Date(value);
-    const y = d.getUTCFullYear();
-    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(d.getUTCDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
+    const minuteKey = toPublicGoldSourceMinuteKey(value);
+    return minuteKey ? minuteKey.slice(0, 10) : null;
   }
 
   private toModel(
