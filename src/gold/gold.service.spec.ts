@@ -422,4 +422,53 @@ describe('GoldService', () => {
       expect(warnings).toEqual([]);
     });
   });
+
+  describe('getGoldPriceAnalytics', () => {
+    it('scopes history to the authenticated user', async () => {
+      pricesRepo.find.mockImplementation(
+        async ({ where }: { where: { userId: string } }) => {
+          if (where.userId !== 'user-a') {
+            return [];
+          }
+          return [
+            price({
+              id: 'owned',
+              userId: 'user-a',
+              capturedPriceAt: now,
+            }),
+          ];
+        },
+      );
+
+      const mine = await service.getGoldPriceAnalytics(
+        'user-a',
+        { range: 'ALL' },
+        now,
+      );
+      const other = await service.getGoldPriceAnalytics(
+        'user-b',
+        { range: 'ALL' },
+        now,
+      );
+
+      expect(pricesRepo.find).toHaveBeenCalledWith({
+        where: { userId: 'user-a' },
+      });
+      expect(mine.latest?.id).toBe('owned');
+      expect(other.history).toEqual([]);
+      expect(other.dataQuality.sampleCount).toBe(0);
+    });
+
+    it('returns empty analytics without inventing a 0% change', async () => {
+      pricesRepo.find.mockResolvedValue([]);
+      const result = await service.getGoldPriceAnalytics(
+        'user-a',
+        { range: 'D7' },
+        now,
+      );
+      expect(result.latest).toBeNull();
+      expect(result.vsPreviousBuy).toBeNull();
+      expect(result.dataQuality.hasSufficientHistory).toBe(false);
+    });
+  });
 });

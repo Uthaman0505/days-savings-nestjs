@@ -3,6 +3,7 @@ import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { JwtUser } from '../auth/jwt.strategy';
+import { GoldPriceAnalyticsInput } from './dto/gold-price-analytics.input';
 import { ConfirmGoldPriceCaptureInput } from './dto/confirm-gold-price-capture.input';
 import { ConfirmGoldExtractionItemInput } from './dto/confirm-gold-extraction-item.input';
 import { CreateGoldPurchaseInput } from './dto/create-gold-purchase.input';
@@ -19,6 +20,10 @@ import { GoldService } from './gold.service';
 import { GoldDocumentModel } from './models/gold-document.model';
 import { ConfirmGoldExtractionItemResultModel } from './models/confirm-gold-extraction-item.model';
 import { GoldExtractionItemModel } from './models/gold-extraction-item.model';
+import {
+  GoldPriceAnalyticsModel,
+  GoldPriceHistoryPointModel,
+} from './models/gold-price-analytics.model';
 import { GoldPriceCaptureModel } from './models/gold-price-capture.model';
 import {
   GoldDashboardModel,
@@ -66,6 +71,33 @@ export class GoldResolver {
     @CurrentUser() user: JwtUser,
   ): Promise<GoldPriceModel | null> {
     return this.goldService.latestGoldPrice(user.id);
+  }
+
+  @Query(() => GoldPriceAnalyticsModel, { name: 'goldPriceAnalytics' })
+  @UseGuards(JwtAuthGuard)
+  goldPriceAnalytics(
+    @CurrentUser() user: JwtUser,
+    @Args('input', { type: () => GoldPriceAnalyticsInput, nullable: true })
+    input?: GoldPriceAnalyticsInput,
+  ): Promise<GoldPriceAnalyticsModel> {
+    return this.goldService.getGoldPriceAnalytics(
+      user.id,
+      input ?? { range: 'D7' },
+    );
+  }
+
+  @Query(() => [GoldPriceHistoryPointModel], { name: 'goldPriceHistory' })
+  @UseGuards(JwtAuthGuard)
+  async goldPriceHistory(
+    @CurrentUser() user: JwtUser,
+    @Args('input', { type: () => GoldPriceAnalyticsInput, nullable: true })
+    input?: GoldPriceAnalyticsInput,
+  ) {
+    const analytics = await this.goldService.getGoldPriceAnalytics(
+      user.id,
+      input ?? { range: 'ALL' },
+    );
+    return analytics.history;
   }
 
   @Mutation(() => GoldPurchaseModel, { name: 'createGoldPurchase' })

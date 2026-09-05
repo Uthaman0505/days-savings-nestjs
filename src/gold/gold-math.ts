@@ -107,3 +107,45 @@ export function averageCostPerGramCents(
   }
   return Number(roundHalfUpDiv(BigInt(totalInvestedCents) * GRAM_SCALE, units));
 }
+
+/** Integer-cent average with half-up rounding. */
+export function averageIntsHalfUp(values: number[]): number | null {
+  if (values.length === 0) {
+    return null;
+  }
+  let sum = 0n;
+  for (const value of values) {
+    sum += BigInt(value);
+  }
+  return Number(roundHalfUpDiv(sum, BigInt(values.length)));
+}
+
+/**
+ * Percent with 2 decimal places: round((part / whole) × 10000) / 100.
+ * Example: 5200 / 62500 → 8.32
+ */
+export function ratioPercent(part: number, whole: number): number | null {
+  if (whole <= 0) {
+    return null;
+  }
+  const negative = part < 0;
+  const absPart = negative ? -part : part;
+  const hundredths = Number(
+    roundHalfUpDiv(BigInt(absPart) * 10000n, BigInt(whole)),
+  );
+  return (negative ? -hundredths : hundredths) / 100;
+}
+
+/**
+ * Signed percent change with 2 decimal places.
+ * Example: 56800 → 57300 = +0.88
+ */
+export function signedPercentChange(
+  fromCents: number,
+  toCents: number,
+): number | null {
+  if (fromCents <= 0) {
+    return null;
+  }
+  return ratioPercent(toCents - fromCents, fromCents);
+}
