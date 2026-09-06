@@ -3,7 +3,8 @@ import { GoldReportController } from './gold-report.controller';
 import { GoldReportService } from './gold-report.service';
 
 describe('GoldReportController', () => {
-  const pdf = Buffer.from('%PDF-1.4 mock-report', 'utf8');
+  const snapshotPdf = Buffer.from('%PDF-1.4 snapshot-report', 'utf8');
+  const strategyPdf = Buffer.from('%PDF-1.4 strategy-report-longer', 'utf8');
   const reports = {
     generateSnapshotPdf: jest.fn(),
     generateStrategyPdf: jest.fn(),
@@ -21,12 +22,12 @@ describe('GoldReportController', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     reports.generateSnapshotPdf.mockResolvedValue({
-      buffer: pdf,
+      buffer: snapshotPdf,
       filename: 'Gold-Snapshot-2026-09-05.pdf',
       contentType: 'application/pdf',
     });
     reports.generateStrategyPdf.mockResolvedValue({
-      buffer: pdf,
+      buffer: strategyPdf,
       filename: 'Gold-Strategy-2026-09-05.pdf',
       contentType: 'application/pdf',
     });
@@ -53,7 +54,11 @@ describe('GoldReportController', () => {
       'Content-Disposition',
       'attachment; filename="Gold-Snapshot-2026-09-05.pdf"',
     );
-    expect(res.send).toHaveBeenCalledWith(pdf);
+    expect(res.send).toHaveBeenCalledWith(snapshotPdf);
+    expect(res.setHeader).toHaveBeenCalledWith(
+      'Cache-Control',
+      'private, no-store, no-cache, must-revalidate',
+    );
   });
 
   it('sends strategy PDF headers from the authenticated user', async () => {
@@ -68,5 +73,7 @@ describe('GoldReportController', () => {
       'Content-Disposition',
       'attachment; filename="Gold-Strategy-2026-09-05.pdf"',
     );
+    expect(res.send).toHaveBeenCalledWith(strategyPdf);
+    expect(res.send).not.toHaveBeenCalledWith(snapshotPdf);
   });
 });
