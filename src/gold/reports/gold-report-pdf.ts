@@ -1,5 +1,6 @@
 import PDFDocument from 'pdfkit';
 import { layoutLineChart } from './gold-report-charts';
+import { pdfSafeText } from './gold-report-format';
 import {
   FOOTER_DISCLAIMER,
   FOOTER_PRODUCT,
@@ -97,7 +98,7 @@ class PdfPainter {
       .font('Helvetica-Bold')
       .fontSize(18)
       .fillColor(ACCENT)
-      .text(text, MARGIN, this.y, {
+      .text(pdfSafeText(text), MARGIN, this.y, {
         width: CONTENT_W,
       });
     this.y = this.doc.y + 6;
@@ -110,7 +111,7 @@ class PdfPainter {
       .font('Helvetica-Bold')
       .fontSize(12)
       .fillColor(ACCENT)
-      .text(text, MARGIN, this.y, {
+      .text(pdfSafeText(text), MARGIN, this.y, {
         width: CONTENT_W,
       });
     this.y = this.doc.y + 4;
@@ -123,7 +124,7 @@ class PdfPainter {
       .font('Helvetica')
       .fontSize(9)
       .fillColor(TEXT)
-      .text(text, MARGIN, this.y, {
+      .text(pdfSafeText(text), MARGIN, this.y, {
         width: CONTENT_W,
         lineGap: 2,
       });
@@ -136,7 +137,7 @@ class PdfPainter {
       .font('Helvetica-Oblique')
       .fontSize(8.5)
       .fillColor(MUTED)
-      .text(text, MARGIN, this.y, {
+      .text(pdfSafeText(text), MARGIN, this.y, {
         width: CONTENT_W,
         lineGap: 2,
       });
@@ -158,14 +159,14 @@ class PdfPainter {
           .font('Helvetica')
           .fontSize(8)
           .fillColor(MUTED)
-          .text(row.label, x, this.y, {
+          .text(pdfSafeText(row.label), x, this.y, {
             width: colW,
           });
         this.doc
           .font('Helvetica-Bold')
           .fontSize(9)
           .fillColor(TEXT)
-          .text(row.value, x, this.y + 11, {
+          .text(pdfSafeText(row.value), x, this.y + 11, {
             width: colW,
           });
       }
@@ -199,86 +200,116 @@ function paintSnapshot(
   painter.body(data.importantNote);
 }
 
+function paintSection(name: string, paint: () => void): void {
+  try {
+    paint();
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`strategy section=${name} complete`);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`PDF_SECTION_FAILED:${name}: ${message}`);
+  }
+}
+
 function paintStrategy(
   painter: PdfPainter,
   data: GoldStrategyReportData,
 ): void {
   painter.title(data.title);
   painter.muted(`Report range: ${rangeLabel(data.requestedRange)}`);
-  painter.heading('1. Executive Summary');
-  painter.kvGrid(data.executiveSummary);
-  painter.heading('2. Current Portfolio');
-  if (data.valuationNote) {
-    painter.muted(data.valuationNote);
-  }
-  painter.kvGrid(data.currentPortfolio);
-  painter.heading('3. Cost Basis & Break-even');
-  painter.kvGrid(data.costBasis);
-  if (data.breakEvenState) {
-    painter.body(data.breakEvenState);
-  }
-  painter.heading('4. Public Gold Price Analytics');
-  if (data.overlapNote) {
-    painter.muted(data.overlapNote);
-  }
-  for (const period of data.periodStats) {
-    paintPeriod(painter, period);
-  }
-  if (data.priceTrendChart) {
-    painter.ensure(220);
-    paintChart(painter, data.priceTrendChart);
-  } else if (data.priceTrendTable) {
-    painter.muted(
-      'A line chart is not shown because fewer than two daily closing observations are available.',
-    );
-    painter.kvGrid(data.priceTrendTable);
-  }
-  if (data.portfolioValueChart) {
-    painter.ensure(280);
-  }
-  painter.heading('5. Portfolio Value History');
-  painter.muted(data.assumptions[1] ?? '');
-  if (data.portfolioValueChart) {
-    paintChart(painter, data.portfolioValueChart);
-  } else {
-    painter.muted(
-      'More price history is needed for a portfolio value trend chart.',
-    );
-  }
-  if (data.holdingsChart) {
-    painter.ensure(280);
-  }
-  painter.heading('6. Holdings Growth');
-  if (data.holdingsChart) {
-    paintChart(painter, data.holdingsChart);
-  } else if (data.holdingsSummary) {
-    painter.muted(
-      'A line chart is not shown because only one holdings observation is available.',
-    );
-    painter.kvGrid(data.holdingsSummary);
-  } else {
-    painter.muted('No Gold holdings growth to chart.');
-  }
-  painter.heading('7. Purchase Performance');
-  paintPurchaseTable(painter, data.purchases);
-  if (data.highestReturn) {
-    painter.body('Highest return purchase');
-    painter.kvGrid(data.highestReturn);
-  }
-  if (data.lowestReturn) {
-    painter.body('Lowest return purchase');
-    painter.kvGrid(data.lowestReturn);
-  }
-  painter.heading('8. Price History');
-  if (data.priceHistoryTruncationNote) {
-    painter.muted(data.priceHistoryTruncationNote);
-  }
-  paintPriceTable(painter, data.priceHistory);
-  painter.heading('9. Data Quality & Assumptions');
-  painter.kvGrid(data.dataQuality, 1);
-  for (const note of data.assumptions) {
-    painter.body(note);
-  }
+  paintSection('executive', () => {
+    painter.heading('1. Executive Summary');
+    painter.kvGrid(data.executiveSummary);
+  });
+  paintSection('current_portfolio', () => {
+    painter.heading('2. Current Portfolio');
+    if (data.valuationNote) {
+      painter.muted(data.valuationNote);
+    }
+    painter.kvGrid(data.currentPortfolio);
+  });
+  paintSection('cost_basis', () => {
+    painter.heading('3. Cost Basis & Break-even');
+    painter.kvGrid(data.costBasis);
+    if (data.breakEvenState) {
+      painter.body(data.breakEvenState);
+    }
+  });
+  paintSection('price_analytics', () => {
+    painter.heading('4. Public Gold Price Analytics');
+    if (data.overlapNote) {
+      painter.muted(data.overlapNote);
+    }
+    for (const period of data.periodStats) {
+      paintPeriod(painter, period);
+    }
+    if (data.priceTrendChart) {
+      painter.ensure(220);
+      paintChart(painter, data.priceTrendChart);
+    } else if (data.priceTrendTable) {
+      painter.muted(
+        'A line chart is not shown because fewer than two daily closing observations are available.',
+      );
+      painter.kvGrid(data.priceTrendTable);
+    }
+  });
+  paintSection('portfolio_value', () => {
+    if (data.portfolioValueChart) {
+      painter.ensure(280);
+    }
+    painter.heading('5. Portfolio Value History');
+    painter.muted(data.assumptions[1] ?? '');
+    if (data.portfolioValueChart) {
+      paintChart(painter, data.portfolioValueChart);
+    } else {
+      painter.muted(
+        'More price history is needed for a portfolio value trend chart.',
+      );
+    }
+  });
+  paintSection('holdings_growth', () => {
+    if (data.holdingsChart) {
+      painter.ensure(280);
+    }
+    painter.heading('6. Holdings Growth');
+    if (data.holdingsChart) {
+      paintChart(painter, data.holdingsChart);
+    } else if (data.holdingsSummary) {
+      painter.muted(
+        'A line chart is not shown because only one holdings observation is available.',
+      );
+      painter.kvGrid(data.holdingsSummary);
+    } else {
+      painter.muted('No Gold holdings growth to chart.');
+    }
+  });
+  paintSection('purchase_performance', () => {
+    painter.heading('7. Purchase Performance');
+    paintPurchaseTable(painter, data.purchases);
+    if (data.highestReturn) {
+      painter.body('Highest return purchase');
+      painter.kvGrid(data.highestReturn);
+    }
+    if (data.lowestReturn) {
+      painter.body('Lowest return purchase');
+      painter.kvGrid(data.lowestReturn);
+    }
+  });
+  paintSection('price_history', () => {
+    painter.heading('8. Price History');
+    if (data.priceHistoryTruncationNote) {
+      painter.muted(data.priceHistoryTruncationNote);
+    }
+    paintPriceTable(painter, data.priceHistory);
+  });
+  paintSection('data_quality', () => {
+    painter.heading('9. Data Quality & Assumptions');
+    painter.kvGrid(data.dataQuality, 1);
+    for (const note of data.assumptions) {
+      painter.body(note);
+    }
+  });
 }
 
 function rangeLabel(range: string): string {
@@ -370,13 +401,16 @@ function paintChart(painter: PdfPainter, chart: ReportLineChart): void {
     });
   }
   for (const series of layout.series) {
-    if (series.points.length === 0) {
+    const points = series.points.filter(
+      (point) => Number.isFinite(point.x) && Number.isFinite(point.y),
+    );
+    if (points.length === 0) {
       continue;
     }
     doc.strokeColor(series.color).lineWidth(1.6);
-    doc.moveTo(series.points[0].x, series.points[0].y);
-    for (let i = 1; i < series.points.length; i += 1) {
-      doc.lineTo(series.points[i].x, series.points[i].y);
+    doc.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i += 1) {
+      doc.lineTo(points[i].x, points[i].y);
     }
     doc.stroke();
   }
@@ -455,7 +489,7 @@ function paintTableHeader(
   let x = MARGIN;
   painter.doc.font('Helvetica-Bold').fontSize(7.5).fillColor(MUTED);
   for (const col of cols) {
-    painter.doc.text(col.label, x, painter.y, { width: col.w });
+    painter.doc.text(pdfSafeText(col.label), x, painter.y, { width: col.w });
     x += col.w;
   }
   painter.y += 12;
@@ -470,9 +504,11 @@ function paintTableRow(
   let x = MARGIN;
   painter.doc.font('Helvetica').fontSize(7.5).fillColor(TEXT);
   for (let i = 0; i < cols.length; i += 1) {
-    painter.doc.text(values[i] ?? '', x, painter.y, {
+    painter.doc.text(pdfSafeText(values[i] ?? ''), x, painter.y, {
       width: cols[i].w - 4,
+      height: 12,
       ellipsis: true,
+      lineBreak: false,
     });
     x += cols[i].w;
   }
