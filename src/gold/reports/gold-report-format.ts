@@ -13,14 +13,14 @@ export function formatReportMoney(
   });
   if (options?.signed) {
     if (cents > 0) {
-      return `+MYR ${absolute}`;
+      return pdfSafeText(`+MYR ${absolute}`);
     }
     if (cents < 0) {
-      return `-MYR ${absolute}`;
+      return pdfSafeText(`-MYR ${absolute}`);
     }
   }
   const prefix = cents < 0 ? '-' : '';
-  return `${prefix}MYR ${absolute}`;
+  return pdfSafeText(`${prefix}MYR ${absolute}`);
 }
 
 export function formatReportPerGram(cents: number | null | undefined): string {
@@ -95,7 +95,45 @@ export function formatReportDateTime(
     minute: '2-digit',
     hour12: false,
   }).format(date);
-  return `${formatted} MYT`;
+  return pdfSafeText(`${formatted} MYT`);
+}
+
+/** Helvetica/WinAnsi-safe. Optional/null fields become empty, never crash PDFKit. */
+export function pdfSafeText(value: string | null | undefined): string {
+  if (value == null) {
+    return '';
+  }
+  let out = '';
+  for (const ch of String(value)) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (
+      code === 9 ||
+      code === 10 ||
+      code === 13 ||
+      (code >= 32 && code <= 126)
+    ) {
+      out += ch;
+      continue;
+    }
+    if (
+      code === 0xa0 ||
+      code === 0x202f ||
+      code === 0x2007 ||
+      code === 0x2009
+    ) {
+      out += ' ';
+      continue;
+    }
+    if (code === 0x2013 || code === 0x2014 || code === 0x2212) {
+      out += '-';
+      continue;
+    }
+    if (code === 0x2026) {
+      out += '...';
+      continue;
+    }
+  }
+  return out;
 }
 
 export function malaysiaCalendarYmd(value: Date): string {
