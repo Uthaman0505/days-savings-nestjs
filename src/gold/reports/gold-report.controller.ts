@@ -33,15 +33,18 @@ export class GoldReportController {
   }
 
   private sendPdf(res: Response, filename: string, buffer: Buffer): void {
+    res.status(200);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Length', String(buffer.length));
+    res.setHeader('Content-Encoding', 'identity');
     res.setHeader(
       'Cache-Control',
       'private, no-store, no-cache, must-revalidate',
     );
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.send(buffer);
+    // end() avoids Express send() rewriting Buffer responses to octet-stream.
+    res.end(buffer);
   }
 }

@@ -15,12 +15,15 @@ describe('GoldReportController', () => {
   );
   const req = { user: { id: 'user-a' } } as never;
   const res = {
+    status: jest.fn().mockReturnThis(),
     setHeader: jest.fn(),
     send: jest.fn(),
+    end: jest.fn(),
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
+    res.status.mockReturnThis();
     reports.generateSnapshotPdf.mockResolvedValue({
       buffer: snapshotPdf,
       filename: 'Gold-Snapshot-2026-09-05.pdf',
@@ -54,7 +57,10 @@ describe('GoldReportController', () => {
       'Content-Disposition',
       'attachment; filename="Gold-Snapshot-2026-09-05.pdf"',
     );
-    expect(res.send).toHaveBeenCalledWith(snapshotPdf);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Encoding', 'identity');
+    expect(res.end).toHaveBeenCalledWith(snapshotPdf);
+    expect(res.send).not.toHaveBeenCalled();
     expect(res.setHeader).toHaveBeenCalledWith(
       'Cache-Control',
       'private, no-store, no-cache, must-revalidate',
@@ -73,7 +79,8 @@ describe('GoldReportController', () => {
       'Content-Disposition',
       'attachment; filename="Gold-Strategy-2026-09-05.pdf"',
     );
-    expect(res.send).toHaveBeenCalledWith(strategyPdf);
-    expect(res.send).not.toHaveBeenCalledWith(snapshotPdf);
+    expect(res.end).toHaveBeenCalledWith(strategyPdf);
+    expect(res.end).not.toHaveBeenCalledWith(snapshotPdf);
+    expect(res.send).not.toHaveBeenCalled();
   });
 });
