@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { BadRequestException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { GoldService } from '../gold.service';
@@ -8,6 +9,10 @@ import {
   SAMPLE_PRICES,
   SAMPLE_PURCHASES,
 } from './gold-report-test.fixtures';
+import {
+  SNAPSHOT_SECTION_TITLES,
+  STRATEGY_SECTION_TITLES,
+} from './gold-report.types';
 
 describe('GoldReportService', () => {
   let service: GoldReportService;
@@ -86,4 +91,62 @@ describe('GoldReportService', () => {
       BadRequestException,
     );
   });
+
+  it('produces different Snapshot and Strategy PDF hashes', async () => {
+    goldService.getGoldAnalyticsSource.mockResolvedValue({
+      purchases: SAMPLE_PURCHASES,
+      prices: SAMPLE_PRICES,
+      latestPrice: SAMPLE_LATEST,
+      todayPriceDate: '2026-09-05',
+    });
+    const snapshot = await service.generateSnapshotPdf('user-a', REPORT_NOW);
+    const strategy = await service.generateStrategyPdf(
+      'user-a',
+      'ALL',
+      REPORT_NOW,
+    );
+    const snapshotHash = createHash('sha256')
+      .update(snapshot.buffer)
+      .digest('hex');
+    const strategyHash = createHash('sha256')
+      .update(strategy.buffer)
+      .digest('hex');
+    expect(snapshot.filename.startsWith('Gold-Snapshot-')).toBe(true);
+    expect(strategy.filename.startsWith('Gold-Strategy-')).toBe(true);
+    expect(snapshot.buffer.subarray(0, 4).toString()).toBe('%PDF');
+    expect(strategy.buffer.subarray(0, 4).toString()).toBe('%PDF');
+    expect(snapshot.buffer.length).not.toBe(strategy.buffer.length);
+    expect(snapshotHash).not.toBe(strategyHash);
+    const snapshotText = pdfHexText(snapshot.buffer);
+    const strategyText = pdfHexText(strategy.buffer);
+    expect(snapshotText).toContain('Gold Investment Snapshot');
+    expect(snapshotText).not.toContain('1. Executive Summary');
+    expect(snapshotText).not.toContain('5. Portfolio Value History');
+    expect(strategyText).toContain('4. Public Gold Price Analytics');
+    expect(strategyText).toContain('5. Portfolio Value History');
+    expect(strategyText).toContain('6. Holdings Growth');
+    expect(strategyText).toContain('7. Purchase Performance');
+    expect(strategyText).toContain('8. Price History');
+    expect(strategyText).toContain('9. Data Quality & Assumptions');
+    for (const title of SNAPSHOT_SECTION_TITLES) {
+      expect(snapshotText).toContain(title);
+    }
+    for (const title of STRATEGY_SECTION_TITLES) {
+      expect(strategyText).toContain(title);
+    }
+  });
 });
+
+function pdfHexText(buffer: Buffer): string {
+  const raw = buffer.toString('latin1');
+  return [...raw.matchAll(/<([0-9a-fA-F]+)>/g)]
+    .map((match) => {
+      const bytes = match[1];
+      let text = '';
+      for (let i = 0; i < bytes.length; i += 2) {
+        text += String.fromCharCode(parseInt(bytes.slice(i, i + 2), 16));
+      }
+      return text;
+    })
+    .join('');
+}
