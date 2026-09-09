@@ -14,6 +14,7 @@ import { GoldPurchaseFilterInput } from './dto/gold-purchase-filter.input';
 import { RejectGoldExtractionItemInput } from './dto/reject-gold-extraction-item.input';
 import { SetGoldPriceInput } from './dto/set-gold-price.input';
 import { SetGoldProfitGoalInput } from './dto/set-gold-profit-goal.input';
+import { GoldProfitTakingPreviewInput } from './dto/gold-profit-taking-preview.input';
 import { UpdateGoldPurchaseInput } from './dto/update-gold-purchase.input';
 import { GoldDocumentService } from './gold-document.service';
 import { GoldExtractionService } from './gold-extraction.service';
@@ -29,6 +30,7 @@ import {
 } from './models/gold-price-analytics.model';
 import { GoldPortfolioAnalyticsModel } from './models/gold-portfolio-analytics.model';
 import { GoldProfitGoalStatusModel } from './models/gold-profit-goal.model';
+import { GoldProfitTakingPreviewModel } from './models/gold-profit-taking-preview.model';
 import { GoldPriceCaptureModel } from './models/gold-price-capture.model';
 import {
   GoldDashboardModel,
@@ -143,6 +145,20 @@ export class GoldResolver {
   @UseGuards(JwtAuthGuard)
   cancelGoldProfitGoal(@CurrentUser() user: JwtUser): Promise<boolean> {
     return this.goldProfitGoalService.cancelGoldProfitGoal(user.id);
+  }
+
+  @Query(() => GoldProfitTakingPreviewModel, {
+    name: 'goldProfitTakingPreview',
+  })
+  @UseGuards(JwtAuthGuard)
+  goldProfitTakingPreview(
+    @CurrentUser() user: JwtUser,
+    @Args('input') input: GoldProfitTakingPreviewInput,
+  ): Promise<GoldProfitTakingPreviewModel> {
+    return this.goldProfitGoalService.getGoldProfitTakingPreview(
+      user.id,
+      input,
+    );
   }
 
   @Mutation(() => GoldPurchaseModel, { name: 'createGoldPurchase' })

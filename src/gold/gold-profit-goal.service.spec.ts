@@ -257,4 +257,79 @@ describe('GoldProfitGoalService', () => {
     expect(afterPrice?.availableProfitCents).toBe(40000);
     expect(afterPrice?.isTargetReached).toBe(true);
   });
+
+  it('returns a TARGET profit-taking preview without writing sales', async () => {
+    goldService.getGoldAnalyticsSource.mockResolvedValue({
+      ...defaultSource,
+      purchases: [
+        purchase({ id: 'a', amountPaidCents: 100000, weightGrams: '2.0000' }),
+      ],
+      latestPrice: {
+        pgBuyPricePerGramCents: 70000,
+        pgSellPricePerGramCents: 75000,
+        priceDate: '2026-09-05',
+      },
+    });
+    await service.setGoldProfitGoal('user-a', { target_profit_cents: 40000 });
+    const saveCount = goalsRepo.save.mock.calls.length;
+    const preview = await service.getGoldProfitTakingPreview('user-a', {
+      mode: 'TARGET',
+    });
+    expect(preview.isPreviewAllowed).toBe(true);
+    expect(preview.executableGramsToSell).toBe('0.5714');
+    expect(preview.estimatedSaleProceedsCents).toBe(39998);
+    expect(goalsRepo.save.mock.calls.length).toBe(saveCount);
+  });
+
+  it('isolates profit-taking preview by user and respects cancel/edit', async () => {
+    goldService.getGoldAnalyticsSource.mockImplementation(
+      async (userId: string) => {
+        if (userId !== 'user-a') {
+          return {
+            purchases: [],
+            prices: [],
+            latestPrice: null,
+            todayPriceDate: '2026-09-05',
+          };
+        }
+        return {
+          ...defaultSource,
+          purchases: [
+            purchase({
+              id: 'a',
+              amountPaidCents: 100000,
+              weightGrams: '2.0000',
+            }),
+          ],
+          latestPrice: {
+            pgBuyPricePerGramCents: 70000,
+            pgSellPricePerGramCents: 75000,
+            priceDate: '2026-09-05',
+          },
+        };
+      },
+    );
+    await service.setGoldProfitGoal('user-a', { target_profit_cents: 40000 });
+    const mine = await service.getGoldProfitTakingPreview('user-a', {
+      mode: 'TARGET',
+    });
+    const other = await service.getGoldProfitTakingPreview('user-b', {
+      mode: 'TARGET',
+    });
+    expect(mine.isPreviewAllowed).toBe(true);
+    expect(other.blockingReason).toBe('NO_ACTIVE_GOAL');
+
+    await service.setGoldProfitGoal('user-a', { target_profit_cents: 50000 });
+    const edited = await service.getGoldProfitTakingPreview('user-a', {
+      mode: 'TARGET',
+    });
+    expect(edited.requestedProfitCents).toBe(50000);
+    expect(edited.blockingReason).toBe('TARGET_NOT_REACHED');
+
+    await service.cancelGoldProfitGoal('user-a');
+    const cancelled = await service.getGoldProfitTakingPreview('user-a', {
+      mode: 'TARGET',
+    });
+    expect(cancelled.blockingReason).toBe('NO_ACTIVE_GOAL');
+  });
 });

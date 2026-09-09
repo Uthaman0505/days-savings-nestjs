@@ -9,7 +9,13 @@ import { evaluateGoldProfitGoal } from './gold-profit-goal';
 import { GoldProfitGoal } from './gold-profit-goal.entity';
 import { GoldService } from './gold.service';
 import type { SetGoldProfitGoalInput } from './dto/set-gold-profit-goal.input';
+import type { GoldProfitTakingPreviewInput } from './dto/gold-profit-taking-preview.input';
 import type { GoldProfitGoalStatusModel } from './models/gold-profit-goal.model';
+import type { GoldProfitTakingPreviewModel } from './models/gold-profit-taking-preview.model';
+import {
+  GOLD_PROFIT_TAKING_MODES,
+  evaluateGoldProfitTakingPreview,
+} from './gold-profit-taking';
 
 @Injectable()
 export class GoldProfitGoalService {
@@ -67,6 +73,38 @@ export class GoldProfitGoalService {
     goal.isActive = false;
     await this.goalsRepo.save(goal);
     return true;
+  }
+
+  async getGoldProfitTakingPreview(
+    userId: string,
+    input: GoldProfitTakingPreviewInput,
+  ): Promise<GoldProfitTakingPreviewModel> {
+    const mode = input.mode;
+    if (!GOLD_PROFIT_TAKING_MODES.includes(mode)) {
+      throw new BadRequestException('mode must be TARGET or PARTIAL.');
+    }
+    const [goal, source] = await Promise.all([
+      this.findActiveGoal(userId),
+      this.goldService.getGoldAnalyticsSource(userId),
+    ]);
+    const preview = evaluateGoldProfitTakingPreview({
+      goal: goal
+        ? {
+            id: goal.id,
+            targetProfitCents: goal.targetProfitCents,
+            status: goal.status,
+            isActive: goal.isActive,
+            createdAt: goal.createdAt,
+            updatedAt: goal.updatedAt,
+            achievedAt: goal.achievedAt,
+          }
+        : null,
+      purchases: source.purchases,
+      latestPrice: source.latestPrice,
+      mode,
+      requestedProfitCents: input.requested_profit_cents,
+    });
+    return preview;
   }
 
   private async findActiveGoal(userId: string): Promise<GoldProfitGoal | null> {

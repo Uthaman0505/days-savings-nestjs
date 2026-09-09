@@ -2,13 +2,17 @@ import {
   averageCostPerGramCents,
   averageIntsHalfUp,
   derivePricePerGramCents,
+  floorGramsFromCentsAtUnitPrice,
   formatGramUnits,
   normalizeStoredWeightGrams,
   parseGramsToUnits,
   ratioPercent,
   signedPercentChange,
+  subtractGramsFloorZero,
   sumGramsStrings,
+  theoreticalGramsFromCentsAtUnitPrice,
   valueCentsFromGramsAndUnitPrice,
+  valueCentsFromGramsAndUnitPriceAllowZero,
 } from './gold-math';
 
 describe('gold-math', () => {
@@ -67,5 +71,18 @@ describe('gold-math', () => {
     expect(signedPercentChange(56800, 57300)).toBe(0.88);
     expect(signedPercentChange(57300, 56800)).toBe(-0.87);
     expect(signedPercentChange(0, 100)).toBeNull();
+  });
+
+  it('floors grams from cash / PG BUY and never rounds upward', () => {
+    expect(floorGramsFromCentsAtUnitPrice(40000, 70000)).toBe('0.5714');
+    expect(floorGramsFromCentsAtUnitPrice(20000, 70000)).toBe('0.2857');
+    expect(theoreticalGramsFromCentsAtUnitPrice(40000, 70000)).toBe(
+      '0.5714285714',
+    );
+    expect(subtractGramsFloorZero('2.0000', '0.5714')).toBe('1.4286');
+    expect(valueCentsFromGramsAndUnitPriceAllowZero('0.0000', 70000)).toBe(0);
+    expect(valueCentsFromGramsAndUnitPriceAllowZero('0.5714', 70000)).toBe(
+      39998,
+    );
   });
 });
