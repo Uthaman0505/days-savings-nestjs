@@ -1,6 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { QueryFailedError } from 'typeorm';
 import { GoldProfitGoal } from './gold-profit-goal.entity';
 import { GoldProfitGoalService } from './gold-profit-goal.service';
 import { GoldService } from './gold.service';
@@ -32,8 +33,12 @@ describe('GoldProfitGoalService', () => {
   };
   const goalsRepo = {
     findOne: jest.fn(),
+    find: jest.fn(),
     create: jest.fn(),
     save: jest.fn(),
+    manager: {
+      transaction: jest.fn(),
+    },
   };
 
   const defaultSource = {
@@ -60,17 +65,41 @@ describe('GoldProfitGoalService', () => {
     goldService.getGoldAnalyticsSource.mockReset();
     goldService.getGoldAnalyticsSource.mockResolvedValue(defaultSource);
     goalsRepo.findOne.mockReset();
+    goalsRepo.find.mockReset();
     goalsRepo.create.mockReset();
     goalsRepo.save.mockReset();
+    goalsRepo.manager.transaction.mockReset();
+    goalsRepo.manager.transaction.mockImplementation(async (cb) =>
+      cb({
+        getRepository: () => goalsRepo,
+      }),
+    );
     goalsRepo.findOne.mockImplementation(async ({ where }) => {
+      const clauses = Array.isArray(where) ? where : [where];
       return (
-        rows.find(
-          (row) =>
-            row.userId === where.userId &&
-            row.isActive === where.isActive &&
-            row.status === where.status,
+        rows.find((row) =>
+          clauses.some(
+            (clause) =>
+              (!clause.id || row.id === clause.id) &&
+              (!clause.userId || row.userId === clause.userId) &&
+              (clause.isActive === undefined ||
+                row.isActive === clause.isActive) &&
+              (!clause.status || row.status === clause.status),
+          ),
         ) ?? null
       );
+    });
+    goalsRepo.find.mockImplementation(async ({ where }) => {
+      const clauses = Array.isArray(where) ? where : [where];
+      return rows
+        .filter((row) =>
+          clauses.some(
+            (clause) =>
+              (!clause.userId || row.userId === clause.userId) &&
+              (!clause.status || row.status === clause.status),
+          ),
+        )
+        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
     });
     goalsRepo.create.mockImplementation((input: Partial<GoldProfitGoal>) => ({
       ...input,
@@ -80,7 +109,7 @@ describe('GoldProfitGoalService', () => {
         ...row,
         id: row.id ?? `goal-${rows.length + 1}`,
         createdAt: row.createdAt ?? NOW,
-        updatedAt: NOW,
+        updatedAt: new Date(NOW.getTime() + (rows.length + 1) * 1000),
       };
       const index = rows.findIndex((item) => item.id === saved.id);
       if (index >= 0) {
@@ -331,5 +360,272 @@ describe('GoldProfitGoalService', () => {
       mode: 'TARGET',
     });
     expect(cancelled.blockingReason).toBe('NO_ACTIVE_GOAL');
+  });
+
+  it('cannot complete a goal before the target is reached', async () => {
+    await service.setGoldProfitGoal('user-a', { target_profit_cents: 40000 });
+    await expect(service.completeGoldProfitGoal('user-a')).rejects.toEqual(
+      new BadRequestException('TARGET_NOT_REACHED'),
+    );
+    expect(rows[0].status).toBe('ACTIVE');
+    expect(rows[0].isActive).toBe(true);
+    expect(rows[0].achievedAt).toBeNull();
+  });
+
+  it('completes a reached goal without mutating holdings or protected capital', async () => {
+    const holdings = [
+      purchase({ id: 'a', amountPaidCents: 100000, weightGrams: '2.0000' }),
+    ];
+    goldService.getGoldAnalyticsSource.mockResolvedValue({
+      ...defaultSource,
+      purchases: holdings,
+      latestPrice: {
+        pgBuyPricePerGramCents: 70000,
+        pgSellPricePerGramCents: 75000,
+        priceDate: '2026-09-05',
+      },
+    });
+    await service.setGoldProfitGoal('user-a', { target_profit_cents: 40000 });
+    const snapshot = structuredClone(holdings);
+    const completed = await service.completeGoldProfitGoal('user-a');
+    expect(completed.alreadyCompleted).toBe(false);
+    expect(completed.goal.status).toBe('ACHIEVED');
+    expect(completed.goal.isActive).toBe(false);
+    expect(completed.goal.achievedAt).toBeInstanceOf(Date);
+    expect(completed.goal.targetProfitCents).toBe(40000);
+    expect(rows[0].status).toBe('ACHIEVED');
+    expect(holdings).toEqual(snapshot);
+    expect(holdings[0].weightGrams).toBe('2.0000');
+    expect(holdings[0].amountPaidCents).toBe(100000);
+    await expect(service.getGoldProfitGoal('user-a')).resolves.toBeNull();
+  });
+
+  it('returns the existing ACHIEVED goal on duplicate completion', async () => {
+    goldService.getGoldAnalyticsSource.mockResolvedValue({
+      ...defaultSource,
+      purchases: [
+        purchase({ id: 'a', amountPaidCents: 100000, weightGrams: '2.0000' }),
+      ],
+      latestPrice: {
+        pgBuyPricePerGramCents: 70000,
+        pgSellPricePerGramCents: 75000,
+        priceDate: '2026-09-05',
+      },
+    });
+    await service.setGoldProfitGoal('user-a', { target_profit_cents: 40000 });
+    const first = await service.completeGoldProfitGoal('user-a');
+    const second = await service.completeGoldProfitGoal('user-a');
+    expect(second.alreadyCompleted).toBe(true);
+    expect(second.goal.id).toBe(first.goal.id);
+    expect(rows.filter((row) => row.status === 'ACHIEVED')).toHaveLength(1);
+  });
+
+  it('preserves completed and cancelled goals in history, newest first', async () => {
+    goldService.getGoldAnalyticsSource.mockResolvedValue({
+      ...defaultSource,
+      purchases: [
+        purchase({ id: 'a', amountPaidCents: 100000, weightGrams: '2.0000' }),
+      ],
+      latestPrice: {
+        pgBuyPricePerGramCents: 70000,
+        pgSellPricePerGramCents: 75000,
+        priceDate: '2026-09-05',
+      },
+    });
+    await service.setGoldProfitGoal('user-a', { target_profit_cents: 15000 });
+    await service.completeGoldProfitGoal('user-a');
+    await service.setGoldProfitGoal('user-a', { target_profit_cents: 20000 });
+    await service.cancelGoldProfitGoal('user-a');
+    const history = await service.getGoldProfitGoalHistory('user-a');
+    expect(history).toHaveLength(2);
+    expect(history.map((item) => item.status)).toEqual([
+      'CANCELLED',
+      'ACHIEVED',
+    ]);
+    expect(history[1].targetProfitCents).toBe(15000);
+    expect(history.every((item) => item.durationDays >= 0)).toBe(true);
+    const other = await service.getGoldProfitGoalHistory('user-b');
+    expect(other).toHaveLength(0);
+  });
+
+  it('previews SAME, FIXED_RM_INCREASE, and PERCENT_INCREASE next targets', async () => {
+    goldService.getGoldAnalyticsSource.mockResolvedValue({
+      ...defaultSource,
+      purchases: [
+        purchase({ id: 'a', amountPaidCents: 100000, weightGrams: '2.0000' }),
+      ],
+      latestPrice: {
+        pgBuyPricePerGramCents: 70000,
+        pgSellPricePerGramCents: 75000,
+        priceDate: '2026-09-05',
+      },
+    });
+    await service.setGoldProfitGoal('user-a', { target_profit_cents: 40000 });
+    await service.completeGoldProfitGoal('user-a');
+    const previousId = rows[0].id;
+
+    const same = await service.getGoldNextProfitGoalPreview('user-a', {
+      previous_goal_id: previousId,
+      rule: 'SAME',
+    });
+    expect(same.proposedTargetCents).toBe(40000);
+    expect(same.requiredPortfolioValueCents).toBe(140000);
+
+    const fixed = await service.getGoldNextProfitGoalPreview('user-a', {
+      previous_goal_id: previousId,
+      rule: 'FIXED_RM_INCREASE',
+      fixed_increase_cents: 10000,
+    });
+    expect(fixed.proposedTargetCents).toBe(50000);
+
+    const percent = await service.getGoldNextProfitGoalPreview('user-a', {
+      previous_goal_id: previousId,
+      rule: 'PERCENT_INCREASE',
+      percentage: 20,
+    });
+    expect(percent.proposedTargetCents).toBe(48000);
+    expect(percent.requiredPortfolioValueCents).toBe(148000);
+    expect(percent.requiredPgBuyPerGramCents).toBe(74000);
+    expect(percent.protectedCapitalCents).toBe(100000);
+    expect(
+      goldService.getGoldAnalyticsSource.mock.calls.length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('creates the next active goal from an adjusted target and keeps the achieved row', async () => {
+    goldService.getGoldAnalyticsSource.mockResolvedValue({
+      ...defaultSource,
+      purchases: [
+        purchase({ id: 'a', amountPaidCents: 100000, weightGrams: '2.0000' }),
+      ],
+      latestPrice: {
+        pgBuyPricePerGramCents: 70000,
+        pgSellPricePerGramCents: 75000,
+        priceDate: '2026-09-05',
+      },
+    });
+    await service.setGoldProfitGoal('user-a', { target_profit_cents: 40000 });
+    await service.completeGoldProfitGoal('user-a');
+    const previousId = rows[0].id;
+    const next = await service.createNextGoldProfitGoal('user-a', {
+      previous_goal_id: previousId,
+      target_profit_cents: 45000,
+    });
+    expect(next.goal.status).toBe('ACTIVE');
+    expect(next.goal.isActive).toBe(true);
+    expect(next.goal.targetProfitCents).toBe(45000);
+    expect(next.goal.id).not.toBe(previousId);
+    expect(rows.filter((row) => row.status === 'ACHIEVED')).toHaveLength(1);
+    expect(rows.filter((row) => row.status === 'ACTIVE')).toHaveLength(1);
+    expect(rows[0].targetProfitCents).toBe(40000);
+  });
+
+  it('rejects creating a next goal while an active goal exists', async () => {
+    goldService.getGoldAnalyticsSource.mockResolvedValue({
+      ...defaultSource,
+      purchases: [
+        purchase({ id: 'a', amountPaidCents: 100000, weightGrams: '2.0000' }),
+      ],
+      latestPrice: {
+        pgBuyPricePerGramCents: 70000,
+        pgSellPricePerGramCents: 75000,
+        priceDate: '2026-09-05',
+      },
+    });
+    await service.setGoldProfitGoal('user-a', { target_profit_cents: 40000 });
+    await service.completeGoldProfitGoal('user-a');
+    const previousId = rows[0].id;
+    await service.createNextGoldProfitGoal('user-a', {
+      previous_goal_id: previousId,
+      target_profit_cents: 48000,
+    });
+    await expect(
+      service.createNextGoldProfitGoal('user-a', {
+        previous_goal_id: previousId,
+        target_profit_cents: 50000,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(rows.filter((row) => row.status === 'ACTIVE')).toHaveLength(1);
+  });
+
+  it('maps a unique-index race to one-active-goal protection', async () => {
+    goldService.getGoldAnalyticsSource.mockResolvedValue({
+      ...defaultSource,
+      purchases: [
+        purchase({ id: 'a', amountPaidCents: 100000, weightGrams: '2.0000' }),
+      ],
+      latestPrice: {
+        pgBuyPricePerGramCents: 70000,
+        pgSellPricePerGramCents: 75000,
+        priceDate: '2026-09-05',
+      },
+    });
+    await service.setGoldProfitGoal('user-a', { target_profit_cents: 40000 });
+    await service.completeGoldProfitGoal('user-a');
+    const previousId = rows[0].id;
+    const unique = Object.assign(new QueryFailedError('', [], new Error()), {
+      driverError: { code: '23505' },
+    });
+    const originalSave = goalsRepo.save.getMockImplementation();
+    goalsRepo.save.mockImplementationOnce(async (row: GoldProfitGoal) => {
+      if (row.status === 'ACTIVE' && row.targetProfitCents === 48000) {
+        throw unique;
+      }
+      return originalSave!(row);
+    });
+    await expect(
+      service.createNextGoldProfitGoal('user-a', {
+        previous_goal_id: previousId,
+        target_profit_cents: 48000,
+      }),
+    ).rejects.toEqual(
+      new BadRequestException('An active profit goal already exists.'),
+    );
+  });
+
+  it('isolates completion and next-goal creation by user', async () => {
+    goldService.getGoldAnalyticsSource.mockImplementation(
+      async (userId: string) => {
+        if (userId !== 'user-a') {
+          return {
+            purchases: [],
+            prices: [],
+            latestPrice: null,
+            todayPriceDate: '2026-09-05',
+          };
+        }
+        return {
+          ...defaultSource,
+          purchases: [
+            purchase({
+              id: 'a',
+              amountPaidCents: 100000,
+              weightGrams: '2.0000',
+            }),
+          ],
+          latestPrice: {
+            pgBuyPricePerGramCents: 70000,
+            pgSellPricePerGramCents: 75000,
+            priceDate: '2026-09-05',
+          },
+        };
+      },
+    );
+    await service.setGoldProfitGoal('user-a', { target_profit_cents: 40000 });
+    await expect(
+      service.completeGoldProfitGoal('user-b'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    const completed = await service.completeGoldProfitGoal('user-a');
+    await expect(
+      service.createNextGoldProfitGoal('user-b', {
+        previous_goal_id: completed.goal.id,
+        target_profit_cents: 48000,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    const next = await service.createNextGoldProfitGoal('user-a', {
+      previous_goal_id: completed.goal.id,
+      target_profit_cents: 48000,
+    });
+    expect(next.goal.targetProfitCents).toBe(48000);
   });
 });
