@@ -46,6 +46,7 @@ import { GoldPriceCapture } from '../gold/gold-price-capture.entity';
 import { GoldPriceScreenshot } from '../gold/gold-price-screenshot.entity';
 import { GoldPurchase } from '../gold/gold-purchase.entity';
 import { GoldPrice } from '../gold/gold-price.entity';
+import { GoldProfitGoal } from '../gold/gold-profit-goal.entity';
 
 export const entities = [
   User,
@@ -96,4 +97,5 @@ export const entities = [
   GoldExtractionItem,
   GoldPriceCapture,
   GoldPriceScreenshot,
+  GoldProfitGoal,
 ];
