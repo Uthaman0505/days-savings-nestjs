@@ -10,17 +10,24 @@ const WEIGHT_RE = /^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/;
 
 /** Parse grams string to 0.0001g integer units. "1.1686" → 11686n */
 export function parseGramsToUnits(weightGrams: string): bigint {
+  const units = parseGramsToUnitsOrZero(weightGrams);
+  if (units <= 0n) {
+    throw new Error('INVALID_WEIGHT_POSITIVE');
+  }
+  return units;
+}
+
+/**
+ * Like parseGramsToUnits, but allows 0.0000g (remaining holdings after a preview).
+ */
+export function parseGramsToUnitsOrZero(weightGrams: string): bigint {
   const trimmed = weightGrams.trim();
   if (!WEIGHT_RE.test(trimmed)) {
     throw new Error('INVALID_WEIGHT_FORMAT');
   }
   const [whole, frac = ''] = trimmed.split('.');
   const fracPadded = (frac + '0000').slice(0, 4);
-  const units = BigInt(whole) * GRAM_SCALE + BigInt(fracPadded);
-  if (units <= 0n) {
-    throw new Error('INVALID_WEIGHT_POSITIVE');
-  }
-  return units;
+  return BigInt(whole) * GRAM_SCALE + BigInt(fracPadded);
 }
 
 /** Format integer units as numeric(12,4) string. 11686n → "1.1686" */
@@ -148,4 +155,64 @@ export function signedPercentChange(
     return null;
   }
   return ratioPercent(toCents - fromCents, fromCents);
+}
+
+/**
+ * Grams implied by cash / PG BUY, floored to 0.0001g.
+ * Floor (never up) so a profit-taking preview cannot consume protected capital.
+ */
+export function floorGramsFromCentsAtUnitPrice(
+  amountCents: number,
+  pricePerGramCents: number,
+): string {
+  if (amountCents <= 0 || pricePerGramCents <= 0) {
+    return '0.0000';
+  }
+  const units = (BigInt(amountCents) * GRAM_SCALE) / BigInt(pricePerGramCents);
+  return formatGramUnits(units);
+}
+
+const THEORETICAL_GRAM_SCALE = 10000000000n; // 10 decimal places
+
+/**
+ * Truncated (not rounded up) grams from cash / PG BUY for display.
+ * Example: 40000 cents / 70000 cents/g → "0.5714285714"
+ */
+export function theoreticalGramsFromCentsAtUnitPrice(
+  amountCents: number,
+  pricePerGramCents: number,
+): string {
+  if (amountCents <= 0 || pricePerGramCents <= 0) {
+    return '0.0000000000';
+  }
+  const scaled =
+    (BigInt(amountCents) * THEORETICAL_GRAM_SCALE) / BigInt(pricePerGramCents);
+  const whole = scaled / THEORETICAL_GRAM_SCALE;
+  const frac = scaled % THEORETICAL_GRAM_SCALE;
+  return `${whole.toString()}.${frac.toString().padStart(10, '0')}`;
+}
+
+/** remaining = minuend - subtrahend, floored at 0.0000g. */
+export function subtractGramsFloorZero(
+  minuendGrams: string,
+  subtrahendGrams: string,
+): string {
+  const left = parseGramsToUnitsOrZero(minuendGrams);
+  const right = parseGramsToUnitsOrZero(subtrahendGrams);
+  return formatGramUnits(left >= right ? left - right : 0n);
+}
+
+/**
+ * Portfolio value allowing 0.0000g remaining holdings.
+ * 0g → 0 cents. Otherwise same half-up rule as valueCentsFromGramsAndUnitPrice.
+ */
+export function valueCentsFromGramsAndUnitPriceAllowZero(
+  weightGrams: string,
+  pricePerGramCents: number,
+): number {
+  const units = parseGramsToUnitsOrZero(weightGrams);
+  if (units === 0n || pricePerGramCents <= 0) {
+    return 0;
+  }
+  return Number(roundHalfUpDiv(units * BigInt(pricePerGramCents), GRAM_SCALE));
 }
