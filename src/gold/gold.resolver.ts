@@ -13,10 +13,12 @@ import { DeleteGoldPurchaseInput } from './dto/delete-gold-purchase.input';
 import { GoldPurchaseFilterInput } from './dto/gold-purchase-filter.input';
 import { RejectGoldExtractionItemInput } from './dto/reject-gold-extraction-item.input';
 import { SetGoldPriceInput } from './dto/set-gold-price.input';
+import { SetGoldProfitGoalInput } from './dto/set-gold-profit-goal.input';
 import { UpdateGoldPurchaseInput } from './dto/update-gold-purchase.input';
 import { GoldDocumentService } from './gold-document.service';
 import { GoldExtractionService } from './gold-extraction.service';
 import { GoldPriceCaptureService } from './gold-price-capture.service';
+import { GoldProfitGoalService } from './gold-profit-goal.service';
 import { GoldService } from './gold.service';
 import { GoldDocumentModel } from './models/gold-document.model';
 import { ConfirmGoldExtractionItemResultModel } from './models/confirm-gold-extraction-item.model';
@@ -26,6 +28,7 @@ import {
   GoldPriceHistoryPointModel,
 } from './models/gold-price-analytics.model';
 import { GoldPortfolioAnalyticsModel } from './models/gold-portfolio-analytics.model';
+import { GoldProfitGoalStatusModel } from './models/gold-profit-goal.model';
 import { GoldPriceCaptureModel } from './models/gold-price-capture.model';
 import {
   GoldDashboardModel,
@@ -40,6 +43,7 @@ export class GoldResolver {
     private readonly goldDocumentService: GoldDocumentService,
     private readonly goldExtractionService: GoldExtractionService,
     private readonly goldPriceCaptureService: GoldPriceCaptureService,
+    private readonly goldProfitGoalService: GoldProfitGoalService,
   ) {}
 
   @Query(() => GoldDashboardModel, { name: 'goldDashboard' })
@@ -113,6 +117,32 @@ export class GoldResolver {
       user.id,
       input ?? { range: 'D7' },
     );
+  }
+
+  @Query(() => GoldProfitGoalStatusModel, {
+    name: 'goldProfitGoal',
+    nullable: true,
+  })
+  @UseGuards(JwtAuthGuard)
+  goldProfitGoal(
+    @CurrentUser() user: JwtUser,
+  ): Promise<GoldProfitGoalStatusModel | null> {
+    return this.goldProfitGoalService.getGoldProfitGoal(user.id);
+  }
+
+  @Mutation(() => GoldProfitGoalStatusModel, { name: 'setGoldProfitGoal' })
+  @UseGuards(JwtAuthGuard)
+  setGoldProfitGoal(
+    @CurrentUser() user: JwtUser,
+    @Args('input') input: SetGoldProfitGoalInput,
+  ): Promise<GoldProfitGoalStatusModel> {
+    return this.goldProfitGoalService.setGoldProfitGoal(user.id, input);
+  }
+
+  @Mutation(() => Boolean, { name: 'cancelGoldProfitGoal' })
+  @UseGuards(JwtAuthGuard)
+  cancelGoldProfitGoal(@CurrentUser() user: JwtUser): Promise<boolean> {
+    return this.goldProfitGoalService.cancelGoldProfitGoal(user.id);
   }
 
   @Mutation(() => GoldPurchaseModel, { name: 'createGoldPurchase' })
