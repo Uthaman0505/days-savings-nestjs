@@ -3,18 +3,34 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { analyzeGoldBudgetAllocation } from './gold-budget-allocation';
 import {
+  computeGoldFutureScenario,
+  computeGoldFutureScenarioComparison,
+  isPlannedDeploymentPercent,
+  MAX_FUTURE_SCENARIO_PRICES,
+} from './gold-future-scenario';
+import {
   computeGoldGoalDecision,
   type GoldGoalDecision,
 } from './gold-goal-decision';
 import { GoldPlanningSettings } from './gold-planning-settings.entity';
 import { GoldProfitGoal } from './gold-profit-goal.entity';
+import type { GoldProfitGoalRecord } from './gold-profit-goal';
 import { GoldService } from './gold.service';
+import type { GoldPurchaseObservation } from './gold-portfolio-analytics';
 import type { SetGoldMonthlyBudgetInput } from './dto/set-gold-monthly-budget.input';
+import type {
+  GoldFutureScenarioComparisonInput,
+  GoldFutureScenarioInput,
+} from './dto/gold-future-scenario.input';
 import type {
   GoldBudgetAllocationAnalysisModel,
   GoldGoalDecisionModel,
   GoldPlanningSettingsModel,
 } from './models/gold-planning.model';
+import type {
+  GoldFutureScenarioComparisonModel,
+  GoldFutureScenarioModel,
+} from './models/gold-future-scenario.model';
 
 @Injectable()
 export class GoldPlanningService {
@@ -62,13 +78,58 @@ export class GoldPlanningService {
   async getGoldBudgetAllocationAnalysis(
     userId: string,
   ): Promise<GoldBudgetAllocationAnalysisModel> {
-    const decision = await this.loadGoldGoalDecision(userId);
-    return analyzeGoldBudgetAllocation(decision);
+    const ctx = await this.loadPlanningContext(userId);
+    return analyzeGoldBudgetAllocation(ctx.decision);
+  }
+
+  async getGoldFutureScenario(
+    userId: string,
+    input: GoldFutureScenarioInput,
+  ): Promise<GoldFutureScenarioModel> {
+    this.assertFuturePgBuy(input.future_pg_buy_per_gram_cents);
+    const planned = this.parsePlannedPercent(input.planned_deployment_percent);
+    const requested = this.parseRequestedProfit(input.requested_profit_cents);
+    const ctx = await this.loadPlanningContext(userId);
+    return computeGoldFutureScenario({
+      futurePgBuyPerGramCents: input.future_pg_buy_per_gram_cents,
+      plannedDeploymentPercent: planned,
+      requestedProfitCents: requested,
+      goal: ctx.goal,
+      purchases: ctx.purchases,
+      decision: ctx.decision,
+    });
+  }
+
+  async getGoldFutureScenarioComparison(
+    userId: string,
+    input: GoldFutureScenarioComparisonInput,
+  ): Promise<GoldFutureScenarioComparisonModel> {
+    const prices = this.parseComparisonPrices(input.future_price_cents);
+    const planned = this.parsePlannedPercent(input.planned_deployment_percent);
+    const requested = this.parseRequestedProfit(input.requested_profit_cents);
+    const ctx = await this.loadPlanningContext(userId);
+    return computeGoldFutureScenarioComparison({
+      futurePriceCents: prices,
+      plannedDeploymentPercent: planned,
+      requestedProfitCents: requested,
+      goal: ctx.goal,
+      purchases: ctx.purchases,
+      decision: ctx.decision,
+    });
   }
 
   private async loadGoldGoalDecision(
     userId: string,
   ): Promise<GoldGoalDecision> {
+    const ctx = await this.loadPlanningContext(userId);
+    return ctx.decision;
+  }
+
+  private async loadPlanningContext(userId: string): Promise<{
+    decision: GoldGoalDecision;
+    purchases: GoldPurchaseObservation[];
+    goal: GoldProfitGoalRecord | null;
+  }> {
     const [settings, source, goal] = await Promise.all([
       this.settingsRepo.findOne({ where: { userId } }),
       this.goldService.getGoldAnalyticsSource(userId),
@@ -78,24 +139,30 @@ export class GoldPlanningService {
       }),
     ]);
 
-    return computeGoldGoalDecision({
-      monthlyBudgetCents: settings?.monthlyBudgetCents ?? null,
-      goal: goal
-        ? {
-            id: goal.id,
-            targetProfitCents: goal.targetProfitCents,
-            status: goal.status,
-            isActive: goal.isActive,
-            createdAt: goal.createdAt,
-            updatedAt: goal.updatedAt,
-            achievedAt: goal.achievedAt,
-          }
-        : null,
+    const goalRecord: GoldProfitGoalRecord | null = goal
+      ? {
+          id: goal.id,
+          targetProfitCents: goal.targetProfitCents,
+          status: goal.status,
+          isActive: goal.isActive,
+          createdAt: goal.createdAt,
+          updatedAt: goal.updatedAt,
+          achievedAt: goal.achievedAt,
+        }
+      : null;
+
+    return {
+      decision: computeGoldGoalDecision({
+        monthlyBudgetCents: settings?.monthlyBudgetCents ?? null,
+        goal: goalRecord,
+        purchases: source.purchases,
+        prices: source.prices,
+        latestPrice: source.latestPrice,
+        todayPriceDate: source.todayPriceDate,
+      }),
       purchases: source.purchases,
-      prices: source.prices,
-      latestPrice: source.latestPrice,
-      todayPriceDate: source.todayPriceDate,
-    });
+      goal: goalRecord,
+    };
   }
 
   private toSettingsModel(
@@ -115,5 +182,58 @@ export class GoldPlanningService {
         'monthly_budget_cents must be greater than 0.',
       );
     }
+  }
+
+  private assertFuturePgBuy(cents: number): void {
+    if (!Number.isInteger(cents) || cents < 1) {
+      throw new BadRequestException(
+        'future_pg_buy_per_gram_cents must be greater than 0.',
+      );
+    }
+  }
+
+  private parsePlannedPercent(value: number | null | undefined): number | null {
+    if (value == null) {
+      return null;
+    }
+    if (!isPlannedDeploymentPercent(value)) {
+      throw new BadRequestException(
+        'planned_deployment_percent must be 25, 50, 75, or 100.',
+      );
+    }
+    return value;
+  }
+
+  private parseRequestedProfit(
+    value: number | null | undefined,
+  ): number | null {
+    if (value == null) {
+      return null;
+    }
+    if (!Number.isInteger(value) || value < 1) {
+      throw new BadRequestException(
+        'requested_profit_cents must be greater than 0.',
+      );
+    }
+    return value;
+  }
+
+  private parseComparisonPrices(prices: number[] | null | undefined): number[] {
+    if (!Array.isArray(prices)) {
+      throw new BadRequestException('future_price_cents must be an array.');
+    }
+    if (prices.length > MAX_FUTURE_SCENARIO_PRICES) {
+      throw new BadRequestException(
+        `Compare at most ${MAX_FUTURE_SCENARIO_PRICES} hypothetical PG BUY prices.`,
+      );
+    }
+    for (const cents of prices) {
+      if (!Number.isInteger(cents) || cents < 1) {
+        throw new BadRequestException(
+          'Each future_price_cents value must be an integer greater than 0.',
+        );
+      }
+    }
+    return prices;
   }
 }
