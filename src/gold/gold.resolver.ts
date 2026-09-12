@@ -17,6 +17,10 @@ import { SetGoldProfitGoalInput } from './dto/set-gold-profit-goal.input';
 import { GoldProfitTakingPreviewInput } from './dto/gold-profit-taking-preview.input';
 import { GoldNextProfitGoalPreviewInput } from './dto/gold-next-profit-goal-preview.input';
 import { CreateNextGoldProfitGoalInput } from './dto/create-next-gold-profit-goal.input';
+import {
+  GoldFutureScenarioComparisonInput,
+  GoldFutureScenarioInput,
+} from './dto/gold-future-scenario.input';
 import { SetGoldMonthlyBudgetInput } from './dto/set-gold-monthly-budget.input';
 import { UpdateGoldPurchaseInput } from './dto/update-gold-purchase.input';
 import { GoldDocumentService } from './gold-document.service';
@@ -45,6 +49,10 @@ import {
   GoldGoalDecisionModel,
   GoldPlanningSettingsModel,
 } from './models/gold-planning.model';
+import {
+  GoldFutureScenarioComparisonModel,
+  GoldFutureScenarioModel,
+} from './models/gold-future-scenario.model';
 import { GoldPriceCaptureModel } from './models/gold-price-capture.model';
 import {
   GoldDashboardModel,
@@ -246,6 +254,29 @@ export class GoldResolver {
     @CurrentUser() user: JwtUser,
   ): Promise<GoldBudgetAllocationAnalysisModel> {
     return this.goldPlanningService.getGoldBudgetAllocationAnalysis(user.id);
+  }
+
+  @Query(() => GoldFutureScenarioModel, { name: 'goldFutureScenario' })
+  @UseGuards(JwtAuthGuard)
+  goldFutureScenario(
+    @CurrentUser() user: JwtUser,
+    @Args('input') input: GoldFutureScenarioInput,
+  ): Promise<GoldFutureScenarioModel> {
+    return this.goldPlanningService.getGoldFutureScenario(user.id, input);
+  }
+
+  @Query(() => GoldFutureScenarioComparisonModel, {
+    name: 'goldFutureScenarioComparison',
+  })
+  @UseGuards(JwtAuthGuard)
+  goldFutureScenarioComparison(
+    @CurrentUser() user: JwtUser,
+    @Args('input') input: GoldFutureScenarioComparisonInput,
+  ): Promise<GoldFutureScenarioComparisonModel> {
+    return this.goldPlanningService.getGoldFutureScenarioComparison(
+      user.id,
+      input,
+    );
   }
 
   @Mutation(() => GoldProfitGoalStatusModel, {

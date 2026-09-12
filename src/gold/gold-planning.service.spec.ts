@@ -272,4 +272,77 @@ describe('GoldPlanningService', () => {
     expect(analysisA.isRankingAvailable).toBe(true);
     expect(analysisB.isRankingAvailable).toBe(false);
   });
+
+  it('computes a hypothetical future scenario without writing purchases', async () => {
+    await service.setGoldMonthlyBudget('user-a', {
+      monthly_budget_cents: 40000,
+    });
+    goalRows.push({
+      id: 'goal-1',
+      userId: 'user-a',
+      targetProfitCents: 40000,
+      status: 'ACTIVE',
+      isActive: true,
+      createdAt: NOW,
+      updatedAt: NOW,
+      achievedAt: null,
+    } as GoldProfitGoal);
+    const result = await service.getGoldFutureScenario('user-a', {
+      future_pg_buy_per_gram_cents: 70000,
+      planned_deployment_percent: 50,
+    });
+    expect(result.futurePortfolioValueCents).toBeGreaterThan(0);
+    expect(result.plannedPurchaseAvailable).toBe(true);
+    expect(goldService.getGoldAnalyticsSource).toHaveBeenCalledWith('user-a');
+    expect(settingsRepo.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('isolates future scenarios by user and rejects too many comparison prices', async () => {
+    await service.setGoldMonthlyBudget('user-a', {
+      monthly_budget_cents: 40000,
+    });
+    await service.setGoldMonthlyBudget('user-b', {
+      monthly_budget_cents: 10000,
+    });
+    goalRows.push(
+      {
+        id: 'goal-a',
+        userId: 'user-a',
+        targetProfitCents: 40000,
+        status: 'ACTIVE',
+        isActive: true,
+        createdAt: NOW,
+        updatedAt: NOW,
+        achievedAt: null,
+      } as GoldProfitGoal,
+      {
+        id: 'goal-b',
+        userId: 'user-b',
+        targetProfitCents: 20000,
+        status: 'ACTIVE',
+        isActive: true,
+        createdAt: NOW,
+        updatedAt: NOW,
+        achievedAt: null,
+      } as GoldProfitGoal,
+    );
+    goldService.getGoldAnalyticsSource.mockImplementation(async (userId) => ({
+      ...defaultSource,
+      purchases: userId === 'user-a' ? defaultSource.purchases : [],
+    }));
+    const a = await service.getGoldFutureScenario('user-a', {
+      future_pg_buy_per_gram_cents: 70000,
+    });
+    const b = await service.getGoldFutureScenario('user-b', {
+      future_pg_buy_per_gram_cents: 70000,
+    });
+    expect(a.hasHoldings).toBe(true);
+    expect(b.hasHoldings).toBe(false);
+    expect(b.futurePortfolioValueCents).toBe(0);
+    await expect(
+      service.getGoldFutureScenarioComparison('user-a', {
+        future_price_cents: [1, 2, 3, 4, 5, 6, 7],
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
 });
