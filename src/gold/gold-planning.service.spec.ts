@@ -210,4 +210,66 @@ describe('GoldPlanningService', () => {
     expect(decision.currentPgSellCents).toBe(66000);
     expect(decision.scenarios).toHaveLength(4);
   });
+
+  it('reuses the Phase 6A decision context for goldBudgetAllocationAnalysis', async () => {
+    await service.setGoldMonthlyBudget('user-a', {
+      monthly_budget_cents: 40000,
+    });
+    goalRows.push({
+      id: 'goal-1',
+      userId: 'user-a',
+      targetProfitCents: 40000,
+      status: 'ACTIVE',
+      isActive: true,
+      createdAt: NOW,
+      updatedAt: NOW,
+      achievedAt: null,
+    } as GoldProfitGoal);
+    const analysis = await service.getGoldBudgetAllocationAnalysis('user-a');
+    expect(analysis.monthlyBudgetCents).toBe(40000);
+    expect(analysis.scenarios).toHaveLength(4);
+    expect(analysis.recommendedAllocationCents).toBeLessThanOrEqual(40000);
+    expect(goldService.getGoldAnalyticsSource).toHaveBeenCalledWith('user-a');
+  });
+
+  it('isolates budget allocation analysis by user', async () => {
+    await service.setGoldMonthlyBudget('user-a', {
+      monthly_budget_cents: 40000,
+    });
+    await service.setGoldMonthlyBudget('user-b', {
+      monthly_budget_cents: 10000,
+    });
+    goalRows.push(
+      {
+        id: 'goal-a',
+        userId: 'user-a',
+        targetProfitCents: 40000,
+        status: 'ACTIVE',
+        isActive: true,
+        createdAt: NOW,
+        updatedAt: NOW,
+        achievedAt: null,
+      } as GoldProfitGoal,
+      {
+        id: 'goal-b',
+        userId: 'user-b',
+        targetProfitCents: 20000,
+        status: 'ACTIVE',
+        isActive: true,
+        createdAt: NOW,
+        updatedAt: NOW,
+        achievedAt: null,
+      } as GoldProfitGoal,
+    );
+    goldService.getGoldAnalyticsSource.mockImplementation(async (userId) => ({
+      ...defaultSource,
+      purchases: userId === 'user-a' ? defaultSource.purchases : [],
+    }));
+    const analysisA = await service.getGoldBudgetAllocationAnalysis('user-a');
+    const analysisB = await service.getGoldBudgetAllocationAnalysis('user-b');
+    expect(analysisA.monthlyBudgetCents).toBe(40000);
+    expect(analysisB.monthlyBudgetCents).toBe(10000);
+    expect(analysisA.isRankingAvailable).toBe(true);
+    expect(analysisB.isRankingAvailable).toBe(false);
+  });
 });
