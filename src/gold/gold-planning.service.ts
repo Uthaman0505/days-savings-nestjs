@@ -1,12 +1,17 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { computeGoldGoalDecision } from './gold-goal-decision';
+import { analyzeGoldBudgetAllocation } from './gold-budget-allocation';
+import {
+  computeGoldGoalDecision,
+  type GoldGoalDecision,
+} from './gold-goal-decision';
 import { GoldPlanningSettings } from './gold-planning-settings.entity';
 import { GoldProfitGoal } from './gold-profit-goal.entity';
 import { GoldService } from './gold.service';
 import type { SetGoldMonthlyBudgetInput } from './dto/set-gold-monthly-budget.input';
 import type {
+  GoldBudgetAllocationAnalysisModel,
   GoldGoalDecisionModel,
   GoldPlanningSettingsModel,
 } from './models/gold-planning.model';
@@ -51,6 +56,19 @@ export class GoldPlanningService {
   }
 
   async getGoldGoalDecision(userId: string): Promise<GoldGoalDecisionModel> {
+    return this.loadGoldGoalDecision(userId);
+  }
+
+  async getGoldBudgetAllocationAnalysis(
+    userId: string,
+  ): Promise<GoldBudgetAllocationAnalysisModel> {
+    const decision = await this.loadGoldGoalDecision(userId);
+    return analyzeGoldBudgetAllocation(decision);
+  }
+
+  private async loadGoldGoalDecision(
+    userId: string,
+  ): Promise<GoldGoalDecision> {
     const [settings, source, goal] = await Promise.all([
       this.settingsRepo.findOne({ where: { userId } }),
       this.goldService.getGoldAnalyticsSource(userId),

@@ -41,6 +41,7 @@ import {
 } from './models/gold-next-profit-goal.model';
 import { GoldProfitTakingPreviewModel } from './models/gold-profit-taking-preview.model';
 import {
+  GoldBudgetAllocationAnalysisModel,
   GoldGoalDecisionModel,
   GoldPlanningSettingsModel,
 } from './models/gold-planning.model';
@@ -235,6 +236,16 @@ export class GoldResolver {
     @CurrentUser() user: JwtUser,
   ): Promise<GoldGoalDecisionModel> {
     return this.goldPlanningService.getGoldGoalDecision(user.id);
+  }
+
+  @Query(() => GoldBudgetAllocationAnalysisModel, {
+    name: 'goldBudgetAllocationAnalysis',
+  })
+  @UseGuards(JwtAuthGuard)
+  goldBudgetAllocationAnalysis(
+    @CurrentUser() user: JwtUser,
+  ): Promise<GoldBudgetAllocationAnalysisModel> {
+    return this.goldPlanningService.getGoldBudgetAllocationAnalysis(user.id);
   }
 
   @Mutation(() => GoldProfitGoalStatusModel, {
