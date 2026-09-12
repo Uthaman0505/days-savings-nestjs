@@ -17,10 +17,12 @@ import { SetGoldProfitGoalInput } from './dto/set-gold-profit-goal.input';
 import { GoldProfitTakingPreviewInput } from './dto/gold-profit-taking-preview.input';
 import { GoldNextProfitGoalPreviewInput } from './dto/gold-next-profit-goal-preview.input';
 import { CreateNextGoldProfitGoalInput } from './dto/create-next-gold-profit-goal.input';
+import { SetGoldMonthlyBudgetInput } from './dto/set-gold-monthly-budget.input';
 import { UpdateGoldPurchaseInput } from './dto/update-gold-purchase.input';
 import { GoldDocumentService } from './gold-document.service';
 import { GoldExtractionService } from './gold-extraction.service';
 import { GoldPriceCaptureService } from './gold-price-capture.service';
+import { GoldPlanningService } from './gold-planning.service';
 import { GoldProfitGoalService } from './gold-profit-goal.service';
 import { GoldService } from './gold.service';
 import { GoldDocumentModel } from './models/gold-document.model';
@@ -38,6 +40,10 @@ import {
   GoldProfitGoalHistoryItemModel,
 } from './models/gold-next-profit-goal.model';
 import { GoldProfitTakingPreviewModel } from './models/gold-profit-taking-preview.model';
+import {
+  GoldGoalDecisionModel,
+  GoldPlanningSettingsModel,
+} from './models/gold-planning.model';
 import { GoldPriceCaptureModel } from './models/gold-price-capture.model';
 import {
   GoldDashboardModel,
@@ -53,6 +59,7 @@ export class GoldResolver {
     private readonly goldExtractionService: GoldExtractionService,
     private readonly goldPriceCaptureService: GoldPriceCaptureService,
     private readonly goldProfitGoalService: GoldProfitGoalService,
+    private readonly goldPlanningService: GoldPlanningService,
   ) {}
 
   @Query(() => GoldDashboardModel, { name: 'goldDashboard' })
@@ -200,6 +207,34 @@ export class GoldResolver {
       user.id,
       input,
     );
+  }
+
+  @Query(() => GoldPlanningSettingsModel, {
+    name: 'goldPlanningSettings',
+    nullable: true,
+  })
+  @UseGuards(JwtAuthGuard)
+  goldPlanningSettings(
+    @CurrentUser() user: JwtUser,
+  ): Promise<GoldPlanningSettingsModel | null> {
+    return this.goldPlanningService.getGoldPlanningSettings(user.id);
+  }
+
+  @Mutation(() => GoldPlanningSettingsModel, { name: 'setGoldMonthlyBudget' })
+  @UseGuards(JwtAuthGuard)
+  setGoldMonthlyBudget(
+    @CurrentUser() user: JwtUser,
+    @Args('input') input: SetGoldMonthlyBudgetInput,
+  ): Promise<GoldPlanningSettingsModel> {
+    return this.goldPlanningService.setGoldMonthlyBudget(user.id, input);
+  }
+
+  @Query(() => GoldGoalDecisionModel, { name: 'goldGoalDecision' })
+  @UseGuards(JwtAuthGuard)
+  goldGoalDecision(
+    @CurrentUser() user: JwtUser,
+  ): Promise<GoldGoalDecisionModel> {
+    return this.goldPlanningService.getGoldGoalDecision(user.id);
   }
 
   @Mutation(() => GoldProfitGoalStatusModel, {

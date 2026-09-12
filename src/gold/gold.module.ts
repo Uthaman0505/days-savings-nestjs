@@ -11,6 +11,8 @@ import { GoldPriceCapture } from './gold-price-capture.entity';
 import { GoldPriceCaptureService } from './gold-price-capture.service';
 import { GoldPriceScreenshot } from './gold-price-screenshot.entity';
 import { GoldPrice } from './gold-price.entity';
+import { GoldPlanningSettings } from './gold-planning-settings.entity';
+import { GoldPlanningService } from './gold-planning.service';
 import { GoldProfitGoal } from './gold-profit-goal.entity';
 import { GoldProfitGoalService } from './gold-profit-goal.service';
 import { GoldPurchase } from './gold-purchase.entity';
@@ -29,6 +31,7 @@ import { GoldReportService } from './reports/gold-report.service';
       GoldPriceCapture,
       GoldPriceScreenshot,
       GoldProfitGoal,
+      GoldPlanningSettings,
     ]),
   ],
   controllers: [
@@ -45,6 +48,7 @@ import { GoldReportService } from './reports/gold-report.service';
     GoldResolver,
     GoldReportService,
     GoldProfitGoalService,
+    GoldPlanningService,
   ],
   exports: [
     GoldService,
@@ -52,6 +56,7 @@ import { GoldReportService } from './reports/gold-report.service';
     GoldExtractionService,
     GoldPriceCaptureService,
     GoldProfitGoalService,
+    GoldPlanningService,
   ],
 })
 export class GoldModule {}
