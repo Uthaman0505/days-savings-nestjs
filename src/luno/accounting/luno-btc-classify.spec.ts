@@ -1,7 +1,4 @@
-import {
-  attachOrderFees,
-  classifyLunoTransactions,
-} from './luno-btc-classify';
+import { attachOrderFees, classifyLunoTransactions } from './luno-btc-classify';
 import type { SourceTx } from './luno-btc.types';
 
 function tx(
@@ -352,9 +349,11 @@ describe('classifyLunoTransactions', () => {
       BTC,
       MYR,
     );
-    const withTrade = attachOrderFees(events, [], [
-      { id: 'BX9', feeCounter: '0.80', feeBase: '0' },
-    ]);
+    const withTrade = attachOrderFees(
+      events,
+      [],
+      [{ id: 'BX9', feeCounter: '0.80', feeBase: '0' }],
+    );
     expect(withTrade[0].feeStatus).toBe('DERIVED');
     expect(withTrade[0].feeSource).toBe('USER_TRADE');
     expect(withTrade[0].feeMyr).toBe('0.80');

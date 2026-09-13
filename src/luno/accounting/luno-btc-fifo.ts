@@ -74,7 +74,10 @@ export function runFifo(events: ClassifiedEvent[]): FifoResult {
       const fromSale = minNonNeg(saleMyr, event.myrAmount);
       saleMyr = subtractDecimalStrings(saleMyr, fromSale);
       const rest = subtractDecimalStrings(event.myrAmount, fromSale);
-      externalMyr = subtractDecimalStrings(externalMyr, minNonNeg(externalMyr, rest));
+      externalMyr = subtractDecimalStrings(
+        externalMyr,
+        minNonNeg(externalMyr, rest),
+      );
       continue;
     }
     if (event.classification === 'BTC_BUY') {
@@ -107,7 +110,10 @@ export function runFifo(events: ClassifiedEvent[]): FifoResult {
         addDecimalStrings(funded.fromExternal, funded.unexplained),
       );
       reinvestedMyr = addDecimalStrings(reinvestedMyr, funded.fromSale);
-      unexplainedBuyMyr = addDecimalStrings(unexplainedBuyMyr, funded.unexplained);
+      unexplainedBuyMyr = addDecimalStrings(
+        unexplainedBuyMyr,
+        funded.unexplained,
+      );
       if (event.warning) {
         warnings.push(event.warning);
       }
@@ -130,7 +136,8 @@ export function runFifo(events: ClassifiedEvent[]): FifoResult {
         myrCostRemaining: '0',
         feeMyr: '0',
         effectiveCostMyr: '0',
-        origin: event.classification === 'BTC_DEPOSIT' ? 'DEPOSIT' : 'TRANSFER_IN',
+        origin:
+          event.classification === 'BTC_DEPOSIT' ? 'DEPOSIT' : 'TRANSFER_IN',
       });
       warnings.push(
         event.warning ??
@@ -194,7 +201,10 @@ export function runFifo(events: ClassifiedEvent[]): FifoResult {
         sourceTransactionId: event.sourceTransactionIds[0] ?? null,
         reference: event.reference,
         disposedAt: event.occurredAt,
-        kind: event.classification === 'BTC_WITHDRAWAL' ? 'WITHDRAWAL' : 'TRANSFER_OUT',
+        kind:
+          event.classification === 'BTC_WITHDRAWAL'
+            ? 'WITHDRAWAL'
+            : 'TRANSFER_OUT',
         btcQuantity: event.btcQuantity,
         grossProceedsMyr: '0',
         feeMyr: '0',

@@ -97,8 +97,7 @@ export function buildPortfolioView(input: {
         );
 
   const live = input.liveBtcBalance;
-  const differenceBtc =
-    live == null ? qty : subtractDecimalStrings(qty, live);
+  const differenceBtc = live == null ? qty : subtractDecimalStrings(qty, live);
   const absDiff = absDecimal(differenceBtc);
   let reconciliationStatus: ReconciliationStatus;
   if (live == null) {
@@ -114,8 +113,7 @@ export function buildPortfolioView(input: {
   const unknownWarnings = input.fifo.warnings;
   const hasZeroCostLot = input.fifo.lots.some(
     (lot) =>
-      compareDecimal(lot.btcQuantityRemaining, '0') > 0 &&
-      lot.origin !== 'BUY',
+      compareDecimal(lot.btcQuantityRemaining, '0') > 0 && lot.origin !== 'BUY',
   );
   const feeCoverage =
     input.feeCoverage ??
@@ -153,10 +151,7 @@ export function buildPortfolioView(input: {
     status = 'APPROVED_PARTIAL';
   }
 
-  const warnings = [
-    ...(input.extraWarnings ?? []),
-    ...unknownWarnings,
-  ];
+  const warnings = [...(input.extraWarnings ?? []), ...unknownWarnings];
   if (reconciliationStatus === 'MISMATCH') {
     warnings.unshift(
       'Holdings do not match Luno BTC. Accounting is NOT_READY and not strategy-ready.',
@@ -218,10 +213,7 @@ function capPct(raw: string | null): string | null {
   return compareDecimal(raw, '100') > 0 ? '100' : raw;
 }
 
-function feeStatusFrom(
-  coverage: FeeCoverage,
-  fifo: FifoResult,
-): FeeStatus {
+function feeStatusFrom(coverage: FeeCoverage, fifo: FifoResult): FeeStatus {
   const hasTrades =
     compareDecimal(fifo.totalBtcBought, '0') > 0 ||
     compareDecimal(fifo.totalBtcSold, '0') > 0;

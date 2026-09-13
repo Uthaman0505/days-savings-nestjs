@@ -19,7 +19,12 @@ export class LunoUserTradeRow {
   @Column({ type: 'bigint' })
   sequence: string;
 
-  @Column({ name: 'luno_order_id', type: 'varchar', length: 64, nullable: true })
+  @Column({
+    name: 'luno_order_id',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
   lunoOrderId: string | null;
 
   @Column({ type: 'varchar', length: 16 })

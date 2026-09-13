@@ -106,7 +106,9 @@ export function cashAppliedFee(event: ClassifiedEvent): string {
 export function buildFeeAudit(events: ClassifiedEvent[]): FeeAuditRow[] {
   return events
     .filter(
-      (row): row is ClassifiedEvent & { classification: 'BTC_BUY' | 'BTC_SELL' } =>
+      (
+        row,
+      ): row is ClassifiedEvent & { classification: 'BTC_BUY' | 'BTC_SELL' } =>
         row.classification === 'BTC_BUY' || row.classification === 'BTC_SELL',
     )
     .map((row) => ({

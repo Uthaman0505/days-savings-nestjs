@@ -123,7 +123,9 @@ export function isZeroDecimal(value: string): boolean {
 }
 
 export function minDecimal(left: string, right: string): string {
-  return compareDecimal(left, right) <= 0 ? asDecimalString(left) : asDecimalString(right);
+  return compareDecimal(left, right) <= 0
+    ? asDecimalString(left)
+    : asDecimalString(right);
 }
 
 export function multiplyDecimalStrings(left: string, right: string): string {

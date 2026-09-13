@@ -27,9 +27,7 @@ type Group = {
 };
 
 function isFeeRow(row: SourceTx): boolean {
-  return (
-    FEE_KIND.test(row.kind ?? '') || FEE_TEXT.test(row.description ?? '')
-  );
+  return FEE_KIND.test(row.kind ?? '') || FEE_TEXT.test(row.description ?? '');
 }
 
 function isTransferKind(row: SourceTx): boolean {
@@ -60,9 +58,7 @@ export function classifyLunoTransactions(
 
   const events: ClassifiedEvent[] = [];
   for (const group of groups.values()) {
-    events.push(
-      ...classifyGroup(group, btcAccountId, myrAccountId),
-    );
+    events.push(...classifyGroup(group, btcAccountId, myrAccountId));
   }
   return events.sort(compareEvents);
 }
@@ -110,9 +106,7 @@ function classifyGroup(
     }
     const code = asset(row);
     const onBtc =
-      code === 'XBT' ||
-      code === 'BTC' ||
-      row.lunoAccountId === btcAccountId;
+      code === 'XBT' || code === 'BTC' || row.lunoAccountId === btcAccountId;
     const onMyr = code === 'MYR' || row.lunoAccountId === myrAccountId;
     if (isTransferKind(row)) {
       transferLike = true;
@@ -124,7 +118,9 @@ function classifyGroup(
       } else if (onMyr && compareDecimal(delta, '0') > 0) {
         warnings.push('Positive MYR fee row ignored (not invented as income).');
       } else if (onBtc) {
-        warnings.push('BTC-denominated fee row kept as a warning; not converted to MYR.');
+        warnings.push(
+          'BTC-denominated fee row kept as a warning; not converted to MYR.',
+        );
       }
       continue;
     }
@@ -378,7 +374,8 @@ function tradeEvent(
     if (instant) {
       const reported = instant.feeMyr ?? '0';
       const hasBtcFee = !isZeroDecimal(instant.feeBtc);
-      const hasMyrFee = instant.feeMyr != null && !isZeroDecimal(instant.feeMyr);
+      const hasMyrFee =
+        instant.feeMyr != null && !isZeroDecimal(instant.feeMyr);
       fee = {
         ...base,
         feeMyr: '0',

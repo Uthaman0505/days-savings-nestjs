@@ -40,7 +40,9 @@ async function main(): Promise<void> {
           (row) =>
             `UNKNOWN ref=${row.reference ?? 'none'} src=${row.sourceTransactionIds.join(',')} ${row.warning ?? ''}`,
         ),
-        view.warnings.length ? `warnings=${view.warnings.length}` : 'warnings=none',
+        view.warnings.length
+          ? `warnings=${view.warnings.length}`
+          : 'warnings=none',
       ].join('\n'),
       'LunoBtcAccounting',
     );

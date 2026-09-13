@@ -83,7 +83,8 @@ export class LunoBtcAccountingService {
         averageBuyPrice: 'remainingCostBasis / btcQuantity (null if qty is 0)',
         overallReturnPct:
           'lifetimePnL / moneyPutInMyr × 100, where lifetimePnL = realised + unrealised. Equivalent to (currentValue + net sale proceeds − moneyPutIn) / moneyPutIn when remaining cost + sold cost = moneyPutIn.',
-        moneyPutInMyr: 'sum of effective MYR cost of BTC buys (price + buy fee)',
+        moneyPutInMyr:
+          'sum of effective MYR cost of BTC buys (price + buy fee)',
         principalRecovered: 'sum of FIFO cost basis consumed by BTC sales only',
         principalRecoveryPct:
           'min(100, principalRecovered / lifetimeExternalContribution × 100) for display; raw ratio kept separately',
