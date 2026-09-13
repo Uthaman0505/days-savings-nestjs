@@ -1,11 +1,7 @@
 import { LUNO_ASSET_BTC, LUNO_ASSET_MYR } from './luno.constants';
 import type { LunoAccountBalance } from './luno.types';
 
-const PREFERRED_TYPES = new Set([
-  'TRANSACTIONAL',
-  'SPOT',
-  'Current/Cheque',
-]);
+const PREFERRED_TYPES = new Set(['TRANSACTIONAL', 'SPOT', 'Current/Cheque']);
 
 function pickAccount(
   balances: LunoAccountBalance[],

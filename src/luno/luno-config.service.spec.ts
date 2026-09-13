@@ -40,9 +40,9 @@ describe('isAllowedLunoGetPath', () => {
     expect(isAllowedLunoGetPath(LUNO_GET_PATHS.balances)).toBe(true);
     expect(isAllowedLunoGetPath(LUNO_GET_PATHS.orders)).toBe(true);
     expect(isAllowedLunoGetPath(LUNO_GET_PATHS.withdrawals)).toBe(true);
-    expect(isAllowedLunoGetPath(`${LUNO_GET_PATHS.transfers}?account_id=1`)).toBe(
-      true,
-    );
+    expect(
+      isAllowedLunoGetPath(`${LUNO_GET_PATHS.transfers}?account_id=1`),
+    ).toBe(true);
     expect(isAllowedLunoGetPath('/api/1/accounts/123/transactions')).toBe(true);
   });
 

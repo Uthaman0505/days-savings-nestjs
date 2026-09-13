@@ -2,7 +2,8 @@ import { identifyBtcMyrAccounts } from './luno-accounts';
 import type { LunoAccountBalance } from './luno.types';
 
 function row(
-  partial: Partial<LunoAccountBalance> & Pick<LunoAccountBalance, 'account_id' | 'asset'>,
+  partial: Partial<LunoAccountBalance> &
+    Pick<LunoAccountBalance, 'account_id' | 'asset'>,
 ): LunoAccountBalance {
   return {
     balance: '0',

@@ -57,7 +57,9 @@ function splitSigned(value: string): SignedDecimal {
 
 function toScaled(parts: SignedDecimal, scale: number): bigint {
   const fracPadded = (parts.frac + '0'.repeat(scale)).slice(0, scale);
-  const units = BigInt(parts.whole || '0') * 10n ** BigInt(scale) + BigInt(fracPadded || '0');
+  const units =
+    BigInt(parts.whole || '0') * 10n ** BigInt(scale) +
+    BigInt(fracPadded || '0');
   return parts.negative ? -units : units;
 }
 
@@ -71,7 +73,9 @@ function fromScaled(units: bigint, scale: number): string {
   const whole = abs / base;
   const frac = abs % base;
   const fracText = frac.toString().padStart(scale, '0').replace(/0+$/, '');
-  const body = fracText.length ? `${whole.toString()}.${fracText}` : whole.toString();
+  const body = fracText.length
+    ? `${whole.toString()}.${fracText}`
+    : whole.toString();
   return negative ? `-${body}` : body;
 }
 

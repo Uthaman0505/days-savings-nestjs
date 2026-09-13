@@ -104,7 +104,9 @@ export class LunoSyncService {
       .filter((id) => id.length > 0);
 
     try {
-      result.ordersUpserted = await this.persistOrders(await this.api.getOrders());
+      result.ordersUpserted = await this.persistOrders(
+        await this.api.getOrders(),
+      );
     } catch (error) {
       errors.push(this.safeError('orders', error));
     }
@@ -126,7 +128,10 @@ export class LunoSyncService {
       }
       try {
         const rows = await this.api.getTransfers(accountId);
-        result.transfersUpserted += await this.persistTransfers(accountId, rows);
+        result.transfersUpserted += await this.persistTransfers(
+          accountId,
+          rows,
+        );
       } catch (error) {
         errors.push(this.safeError(`transfers:${accountId}`, error));
       }
@@ -136,13 +141,13 @@ export class LunoSyncService {
       errors.length === 0
         ? 'SUCCESS'
         : result.accountsUpserted +
-            result.transactionsUpserted +
-            result.ordersUpserted +
-            result.withdrawalsUpserted +
-            result.transfersUpserted >
-          0
-        ? 'PARTIAL'
-        : 'FAILED';
+              result.transactionsUpserted +
+              result.ordersUpserted +
+              result.withdrawalsUpserted +
+              result.transfersUpserted >
+            0
+          ? 'PARTIAL'
+          : 'FAILED';
     const finishedAt = new Date();
     result.finishedAt = finishedAt.toISOString();
     run.status = result.status;

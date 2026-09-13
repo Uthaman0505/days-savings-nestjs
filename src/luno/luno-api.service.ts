@@ -1,4 +1,10 @@
-import { HttpStatus, Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import {
+  HttpStatus,
+  Inject,
+  Injectable,
+  Logger,
+  Optional,
+} from '@nestjs/common';
 import {
   LUNO_FETCH,
   LUNO_GET_PATHS,
@@ -74,9 +80,12 @@ export class LunoApiService {
   }
 
   async getBalances(): Promise<LunoAccountBalance[]> {
-    const raw = await this.getJson<LunoBalancesResponse>(LUNO_GET_PATHS.balances, {
-      auth: true,
-    });
+    const raw = await this.getJson<LunoBalancesResponse>(
+      LUNO_GET_PATHS.balances,
+      {
+        auth: true,
+      },
+    );
     return this.parseBalances(raw);
   }
 
@@ -119,7 +128,10 @@ export class LunoApiService {
     return {
       account_id: String(row.account_id ?? fallbackAccountId),
       available: this.decimal(row.available ?? '0', 'available'),
-      available_delta: this.decimal(row.available_delta ?? '0', 'available_delta'),
+      available_delta: this.decimal(
+        row.available_delta ?? '0',
+        'available_delta',
+      ),
       balance: this.decimal(row.balance ?? '0', 'balance'),
       balance_delta: this.decimal(row.balance_delta ?? '0', 'balance_delta'),
       currency: String(row.currency ?? '').toUpperCase(),
@@ -335,7 +347,9 @@ export class LunoApiService {
       this.config.apiKeyId,
     ]);
     if (!response.ok) {
-      this.logger.warn(`Luno HTTP ${response.status}: ${safeBody.slice(0, 200)}`);
+      this.logger.warn(
+        `Luno HTTP ${response.status}: ${safeBody.slice(0, 200)}`,
+      );
       throw mapLunoHttpError(response.status, safeBody);
     }
     if (!bodyText) {

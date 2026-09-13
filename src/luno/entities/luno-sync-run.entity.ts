@@ -22,10 +22,20 @@ export class LunoSyncRun {
   @Column({ name: 'finished_at', type: 'timestamptz', nullable: true })
   finishedAt: Date | null;
 
-  @Column({ name: 'btc_account_id', type: 'varchar', length: 64, nullable: true })
+  @Column({
+    name: 'btc_account_id',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
   btcAccountId: string | null;
 
-  @Column({ name: 'myr_account_id', type: 'varchar', length: 64, nullable: true })
+  @Column({
+    name: 'myr_account_id',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
   myrAccountId: string | null;
 
   @Column({ name: 'accounts_upserted', type: 'int', default: 0 })

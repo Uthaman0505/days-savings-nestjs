@@ -127,9 +127,11 @@ describe('LunoApiService', () => {
     });
 
     const badJson = jest.fn(async () => textResponse('not-json', 200));
-    await expect(makeApi(badJson).getBtcMyrMarketPrice()).rejects.toMatchObject({
-      lunoCode: 'MALFORMED',
-    });
+    await expect(makeApi(badJson).getBtcMyrMarketPrice()).rejects.toMatchObject(
+      {
+        lunoCode: 'MALFORMED',
+      },
+    );
   });
 
   it('does not attach Authorization to the public ticker request', async () => {

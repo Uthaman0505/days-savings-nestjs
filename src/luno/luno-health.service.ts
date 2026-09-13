@@ -43,7 +43,11 @@ export class LunoHealthService {
     let listed = stored.map(accountToBalance);
     let liveBalancesOk = false;
 
-    if (this.config.enabled && this.config.apiKeyId && this.config.apiKeySecret) {
+    if (
+      this.config.enabled &&
+      this.config.apiKeyId &&
+      this.config.apiKeySecret
+    ) {
       try {
         listed = await this.api.getBalances();
         liveBalancesOk = true;
@@ -84,9 +88,7 @@ export class LunoHealthService {
       btcAccountFound: Boolean(btc),
       myrAccountFound: Boolean(myr),
       btcBalance: btc?.balance ?? null,
-      myrBalance: myr
-        ? addDecimalStrings(myr.balance, myr.reserved)
-        : null,
+      myrBalance: myr ? addDecimalStrings(myr.balance, myr.reserved) : null,
       myrAvailableBalance: myr?.balance ?? null,
       marketPair: LUNO_MARKET_PAIR,
       lastTradePrice,
