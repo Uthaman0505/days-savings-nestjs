@@ -55,6 +55,13 @@ import { GoldPurchase } from '../gold/gold-purchase.entity';
 import { GoldPrice } from '../gold/gold-price.entity';
 import { GoldProfitGoal } from '../gold/gold-profit-goal.entity';
 import { GoldPlanningSettings } from '../gold/gold-planning-settings.entity';
+import { LunoAccount } from '../luno/entities/luno-account.entity';
+import { LunoBalance } from '../luno/entities/luno-balance.entity';
+import { LunoOrderRow } from '../luno/entities/luno-order.entity';
+import { LunoSyncRun } from '../luno/entities/luno-sync-run.entity';
+import { LunoTransactionRow } from '../luno/entities/luno-transaction.entity';
+import { LunoTransferRow } from '../luno/entities/luno-transfer.entity';
+import { LunoWithdrawalRow } from '../luno/entities/luno-withdrawal.entity';
 
 export const entities = [
   User,
@@ -107,4 +114,11 @@ export const entities = [
   GoldPriceScreenshot,
   GoldProfitGoal,
   GoldPlanningSettings,
+  LunoSyncRun,
+  LunoAccount,
+  LunoBalance,
+  LunoTransactionRow,
+  LunoOrderRow,
+  LunoWithdrawalRow,
+  LunoTransferRow,
 ];

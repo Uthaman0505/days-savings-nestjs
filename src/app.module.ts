@@ -10,13 +10,16 @@ import { DatabaseModule } from './database/database.module';
 import { UserModule } from './user/user.module';
 import { ProfileMediaModule } from './profile-media/profile-media.module';
 import { GoldModule } from './gold/gold.module';
+import { LunoModule } from './luno/luno.module';
 import { StorageModule } from './storage/storage.module';
 
 /**
- * G3 Gold-only runtime registration.
+ * Gold + Luno runtime registration.
  *
  * Parked business modules remain on disk (source, entities, migrations).
  * Re-add their `*Module` imports here to reactivate. Do not delete folders.
+ *
+ * Luno is a separate module beside Gold. Do not mix Luno logic into Gold.
  *
  * Parked (not registered):
  * PlansModule, WalletModule, GrabProfitModule, AccountModule,
@@ -48,6 +51,7 @@ import { StorageModule } from './storage/storage.module';
     UserModule,
     ProfileMediaModule,
     GoldModule,
+    LunoModule,
   ],
   providers: [AppService, AppResolver],
 })
