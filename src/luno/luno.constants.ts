@@ -12,6 +12,7 @@ export const LUNO_GET_PATHS = {
   balances: '/api/1/balance',
   transactions: '/api/1/accounts/{id}/transactions',
   orders: '/api/1/listorders',
+  trades: '/api/1/listtrades',
   withdrawals: '/api/1/withdrawals',
   transfers: '/api/exchange/1/transfers',
 } as const;
@@ -23,6 +24,7 @@ export function isAllowedLunoGetPath(pathAndQuery: string): boolean {
     pathname === LUNO_GET_PATHS.ticker ||
     pathname === LUNO_GET_PATHS.balances ||
     pathname === LUNO_GET_PATHS.orders ||
+    pathname === LUNO_GET_PATHS.trades ||
     pathname === LUNO_GET_PATHS.withdrawals ||
     pathname === LUNO_GET_PATHS.transfers
   ) {

@@ -2,7 +2,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { LUNO_GET_PATHS } from './luno.constants';
 
-describe('Luno Phase 1 read-only surface', () => {
+describe('Luno read-only surface', () => {
   it('never calls Luno write/trade/withdraw endpoints', () => {
     const apiSrc = readFileSync(join(__dirname, 'luno-api.service.ts'), 'utf8');
     expect(apiSrc).toContain("method: 'GET'");
@@ -15,9 +15,27 @@ describe('Luno Phase 1 read-only surface', () => {
         '/api/1/ticker',
         '/api/1/balance',
         '/api/1/listorders',
+        '/api/1/listtrades',
         '/api/1/withdrawals',
         '/api/exchange/1/transfers',
       ]),
     );
+  });
+
+  it('does not add strategy or trading recommendations in Phase 2 accounting', () => {
+    const src = [
+      'luno-api.service.ts',
+      'luno-sync.service.ts',
+      'luno-btc-accounting.service.ts',
+      'accounting/luno-btc-fifo.ts',
+      'accounting/luno-btc-formulas.ts',
+      'luno.controller.ts',
+    ]
+      .map((file) => readFileSync(join(__dirname, file), 'utf8'))
+      .join('\n');
+    expect(src).not.toMatch(/\bHARVEST\b/);
+    expect(src).not.toMatch(/\bWAIT\b/);
+    expect(src).not.toContain('/api/1/marketorder');
+    expect(src).not.toContain('/api/1/postorder');
   });
 });

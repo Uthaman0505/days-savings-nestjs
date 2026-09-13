@@ -86,3 +86,85 @@ export function addDecimalStrings(left: string, right: string): string {
   const scale = Math.max(a.frac.length, b.frac.length);
   return fromScaled(toScaled(a, scale) + toScaled(b, scale), scale);
 }
+
+export function subtractDecimalStrings(left: string, right: string): string {
+  return addDecimalStrings(left, negateDecimal(right));
+}
+
+export function negateDecimal(value: string): string {
+  const canonical = asDecimalString(value);
+  if (canonical === '0') {
+    return '0';
+  }
+  return canonical.startsWith('-') ? canonical.slice(1) : `-${canonical}`;
+}
+
+export function absDecimal(value: string): string {
+  const canonical = asDecimalString(value);
+  return canonical.startsWith('-') ? canonical.slice(1) : canonical;
+}
+
+export function compareDecimal(left: string, right: string): number {
+  const a = splitSigned(asDecimalString(left));
+  const b = splitSigned(asDecimalString(right));
+  const scale = Math.max(a.frac.length, b.frac.length);
+  const diff = toScaled(a, scale) - toScaled(b, scale);
+  if (diff < 0n) {
+    return -1;
+  }
+  if (diff > 0n) {
+    return 1;
+  }
+  return 0;
+}
+
+export function isZeroDecimal(value: string): boolean {
+  return compareDecimal(value, '0') === 0;
+}
+
+export function minDecimal(left: string, right: string): string {
+  return compareDecimal(left, right) <= 0 ? asDecimalString(left) : asDecimalString(right);
+}
+
+export function multiplyDecimalStrings(left: string, right: string): string {
+  const a = splitSigned(asDecimalString(left));
+  const b = splitSigned(asDecimalString(right));
+  const scale = a.frac.length + b.frac.length;
+  const product = toScaled(a, a.frac.length) * toScaled(b, b.frac.length);
+  return fromScaled(product, scale);
+}
+
+/**
+ * Divide with half-up rounding to `scale` fractional digits.
+ * Returns null when the divisor is zero.
+ */
+export function divideDecimalStrings(
+  numerator: string,
+  denominator: string,
+  scale = 18,
+): string | null {
+  const n = splitSigned(asDecimalString(numerator));
+  const d = splitSigned(asDecimalString(denominator));
+  const common = Math.max(n.frac.length, d.frac.length);
+  const nUnits = toScaled(n, common);
+  const dUnits = toScaled(d, common);
+  if (dUnits === 0n) {
+    return null;
+  }
+  const negative = nUnits < 0n !== dUnits < 0n;
+  const nAbs = nUnits < 0n ? -nUnits : nUnits;
+  const dAbs = dUnits < 0n ? -dUnits : dUnits;
+  const factor = 10n ** BigInt(scale);
+  const scaled = nAbs * factor;
+  let quot = scaled / dAbs;
+  const rem = scaled % dAbs;
+  if (rem * 2n >= dAbs) {
+    quot += 1n;
+  }
+  return fromScaled(negative ? -quot : quot, scale);
+}
+
+export function roundDecimal(value: string, places: number): string {
+  const rounded = divideDecimalStrings(value, '1', places);
+  return rounded ?? '0';
+}

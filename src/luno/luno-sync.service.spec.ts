@@ -101,6 +101,9 @@ function makeSync(api: Partial<LunoApiService>) {
     (row) => row.lunoWithdrawalId,
   );
   const transfers = memoryRepo<LunoTransferRow>((row) => row.lunoTransferId);
+  const userTrades = memoryRepo<{ pair: string; sequence: string } & MemoryRow>(
+    (row) => `${row.pair}:${row.sequence}`,
+  );
   const service = new LunoSyncService(
     api as LunoApiService,
     enabledConfig(),
@@ -111,6 +114,7 @@ function makeSync(api: Partial<LunoApiService>) {
     orders as never,
     withdrawals as never,
     transfers as never,
+    userTrades as never,
   );
   return {
     service,
@@ -132,6 +136,7 @@ describe('LunoSyncService', () => {
         accountId === 'btc-1' ? [sampleTx] : [],
       ),
       getTransfers: jest.fn(async () => [] as LunoTransfer[]),
+      getUserTrades: jest.fn(async () => []),
     };
     const { service, transactions } = makeSync(api);
     await service.runSync();
@@ -174,6 +179,7 @@ describe('LunoSyncService', () => {
           created_at: 1,
         },
       ]),
+      getUserTrades: jest.fn(async () => []),
     };
     const { service, orders, withdrawals, transfers } = makeSync(api);
     await service.runSync();
@@ -207,6 +213,7 @@ describe('LunoSyncService', () => {
       }),
       getTransactions: jest.fn(async () => []),
       getTransfers: jest.fn(async () => []),
+      getUserTrades: jest.fn(async () => []),
     };
     const { service, orders } = makeSync(api);
     const result = await service.runSync();
@@ -230,6 +237,9 @@ describe('LunoSyncService', () => {
       memoryRepo<LunoOrderRow>((row) => row.lunoOrderId) as never,
       memoryRepo<LunoWithdrawalRow>((row) => row.lunoWithdrawalId) as never,
       memoryRepo<LunoTransferRow>((row) => row.lunoTransferId) as never,
+      memoryRepo<{ pair: string; sequence: string } & MemoryRow>(
+        (row) => `${row.pair}:${row.sequence}`,
+      ) as never,
     );
     await expect(service.runSync()).rejects.toMatchObject({
       lunoCode: 'NOT_ENABLED',

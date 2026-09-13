@@ -29,6 +29,25 @@ describe('LunoConfigService', () => {
   it('does not require credentials when Luno is disabled', () => {
     const service = config({ LUNO_ENABLED: 'false' });
     expect(() => service.onModuleInit()).not.toThrow();
+    expect(service.enabled).toBe(false);
+  });
+
+  it('auto-enables when credentials are present and LUNO_ENABLED is unset', () => {
+    const service = config({
+      LUNO_API_KEY_ID: 'key-id',
+      LUNO_API_KEY_SECRET: 'key-secret',
+    });
+    expect(service.enabled).toBe(true);
+    expect(() => service.onModuleInit()).not.toThrow();
+  });
+
+  it('stays disabled when LUNO_ENABLED=false even if credentials exist', () => {
+    const service = config({
+      LUNO_ENABLED: 'false',
+      LUNO_API_KEY_ID: 'key-id',
+      LUNO_API_KEY_SECRET: 'key-secret',
+    });
+    expect(service.enabled).toBe(false);
   });
 });
 
@@ -39,6 +58,9 @@ describe('isAllowedLunoGetPath', () => {
     );
     expect(isAllowedLunoGetPath(LUNO_GET_PATHS.balances)).toBe(true);
     expect(isAllowedLunoGetPath(LUNO_GET_PATHS.orders)).toBe(true);
+    expect(isAllowedLunoGetPath(`${LUNO_GET_PATHS.trades}?pair=XBTMYR`)).toBe(
+      true,
+    );
     expect(isAllowedLunoGetPath(LUNO_GET_PATHS.withdrawals)).toBe(true);
     expect(
       isAllowedLunoGetPath(`${LUNO_GET_PATHS.transfers}?account_id=1`),

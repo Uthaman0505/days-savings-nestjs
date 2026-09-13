@@ -68,6 +68,25 @@ export type LunoOrdersResponse = {
   orders: LunoOrder[];
 };
 
+export type LunoUserTrade = {
+  base: string;
+  counter: string;
+  fee_base: string;
+  fee_counter: string;
+  is_buy: boolean;
+  order_id: string;
+  pair: string;
+  price: string;
+  sequence: number;
+  timestamp: number;
+  type: string;
+  volume: string;
+};
+
+export type LunoUserTradesResponse = {
+  trades: LunoUserTrade[];
+};
+
 export type LunoWithdrawal = {
   id: string;
   amount: string;
