@@ -1,3 +1,10 @@
+/**
+ * Global TypeORM entity registry (G3).
+ *
+ * Parked business modules stay listed so TypeORM still maps their tables.
+ * Do not remove the eight Gold entities. Do not use TYPEORM_SYNC to drop
+ * parked tables. Reactivating a module does not require deleting rows here.
+ */
 import { RefreshToken } from '../auth/entities/refresh-token.entity';
 import { SavingPlan } from '../plans/saving-plan.entity';
 import { User } from '../user/user.entity';
