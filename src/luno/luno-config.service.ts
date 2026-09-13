@@ -2,6 +2,17 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LUNO_DEFAULT_BASE_URL } from './luno.constants';
 
+function envFlag(value: string | undefined | null): boolean | null {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === 'true' || normalized === '1' || normalized === 'yes') {
+    return true;
+  }
+  if (normalized === 'false' || normalized === '0' || normalized === 'no') {
+    return false;
+  }
+  return null;
+}
+
 @Injectable()
 export class LunoConfigService implements OnModuleInit {
   private readonly logger = new Logger(LunoConfigService.name);
@@ -10,7 +21,9 @@ export class LunoConfigService implements OnModuleInit {
 
   onModuleInit(): void {
     if (!this.enabled) {
-      this.logger.log('Luno sync disabled (LUNO_ENABLED is not true).');
+      this.logger.log(
+        'Luno sync disabled. Set LUNO_API_KEY_ID and LUNO_API_KEY_SECRET, or LUNO_ENABLED=true.',
+      );
       return;
     }
     if (!this.apiKeyId || !this.apiKeySecret) {
@@ -21,8 +34,19 @@ export class LunoConfigService implements OnModuleInit {
     this.logger.log('Luno sync enabled. Credentials loaded from environment.');
   }
 
+  /**
+   * On when LUNO_ENABLED=true, or when both credentials are present
+   * (unless LUNO_ENABLED is explicitly false).
+   */
   get enabled(): boolean {
-    return this.config.get<string>('LUNO_ENABLED') === 'true';
+    const flag = envFlag(this.config.get<string>('LUNO_ENABLED'));
+    if (flag === false) {
+      return false;
+    }
+    if (flag === true) {
+      return true;
+    }
+    return Boolean(this.apiKeyId && this.apiKeySecret);
   }
 
   get apiKeyId(): string | null {

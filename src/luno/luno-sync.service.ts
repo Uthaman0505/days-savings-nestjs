@@ -12,6 +12,7 @@ import { LunoOrderRow } from './entities/luno-order.entity';
 import { LunoSyncRun } from './entities/luno-sync-run.entity';
 import { LunoTransactionRow } from './entities/luno-transaction.entity';
 import { LunoTransferRow } from './entities/luno-transfer.entity';
+import { LunoUserTradeRow } from './entities/luno-user-trade.entity';
 import { LunoWithdrawalRow } from './entities/luno-withdrawal.entity';
 import type {
   LunoAccountBalance,
@@ -19,6 +20,7 @@ import type {
   LunoSyncResult,
   LunoTransaction,
   LunoTransfer,
+  LunoUserTrade,
   LunoWithdrawal,
 } from './luno.types';
 
@@ -43,6 +45,8 @@ export class LunoSyncService {
     private readonly withdrawals: Repository<LunoWithdrawalRow>,
     @InjectRepository(LunoTransferRow)
     private readonly transfers: Repository<LunoTransferRow>,
+    @InjectRepository(LunoUserTradeRow)
+    private readonly userTrades: Repository<LunoUserTradeRow>,
   ) {}
 
   async runSync(): Promise<LunoSyncResult> {
@@ -109,6 +113,12 @@ export class LunoSyncService {
       );
     } catch (error) {
       errors.push(this.safeError('orders', error));
+    }
+
+    try {
+      await this.persistUserTrades(await this.api.getUserTrades());
+    } catch (error) {
+      errors.push(this.safeError('trades', error));
     }
 
     try {
@@ -263,6 +273,36 @@ export class LunoSyncService {
       payload.rawPayload = row as unknown as Record<string, unknown>;
       payload.syncedAt = syncedAt;
       await this.orders.save(payload);
+      count += 1;
+    }
+    return count;
+  }
+
+  private async persistUserTrades(rows: LunoUserTrade[]): Promise<number> {
+    const syncedAt = new Date();
+    let count = 0;
+    for (const row of rows) {
+      if (!Number.isFinite(row.sequence)) {
+        continue;
+      }
+      const existing = await this.userTrades.findOne({
+        where: { pair: row.pair, sequence: String(row.sequence) },
+      });
+      const payload = existing ?? this.userTrades.create();
+      payload.pair = row.pair;
+      payload.sequence = String(row.sequence);
+      payload.lunoOrderId = row.order_id || null;
+      payload.type = row.type;
+      payload.isBuy = row.is_buy;
+      payload.base = row.base;
+      payload.counter = row.counter;
+      payload.feeBase = row.fee_base;
+      payload.feeCounter = row.fee_counter;
+      payload.price = row.price ?? null;
+      payload.tradedAt = new Date(row.timestamp);
+      payload.rawPayload = row as unknown as Record<string, unknown>;
+      payload.syncedAt = syncedAt;
+      await this.userTrades.save(payload);
       count += 1;
     }
     return count;

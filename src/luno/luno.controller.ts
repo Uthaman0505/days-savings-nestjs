@@ -8,6 +8,7 @@ import type {
 import { LunoHealthService } from './luno-health.service';
 import { LunoApiService } from './luno-api.service';
 import { LunoSyncService } from './luno-sync.service';
+import { LunoBtcAccountingService } from './luno-btc-accounting.service';
 
 @Controller('luno')
 export class LunoController {
@@ -15,6 +16,7 @@ export class LunoController {
     private readonly health: LunoHealthService,
     private readonly sync: LunoSyncService,
     private readonly api: LunoApiService,
+    private readonly accounting: LunoBtcAccountingService,
   ) {}
 
   @Get('ticker')
@@ -37,7 +39,33 @@ export class LunoController {
 
   @Post('sync')
   @UseGuards(AuthGuard('jwt'))
-  syncNow(): Promise<LunoSyncResponseDto> {
-    return this.sync.runSync();
+  async syncNow(): Promise<LunoSyncResponseDto> {
+    const result = await this.sync.runSync();
+    try {
+      await this.accounting.rebuildBtcAccounting();
+    } catch {
+      // Phase 1 sync must still succeed if derived accounting rebuild fails.
+    }
+    return result;
+  }
+
+  @Get('btc/portfolio')
+  @UseGuards(AuthGuard('jwt'))
+  async btcPortfolio() {
+    const view = await this.accounting.getPortfolio();
+    return this.accounting.toUserPortfolio(view);
+  }
+
+  @Get('btc/accounting-details')
+  @UseGuards(AuthGuard('jwt'))
+  btcAccountingDetails() {
+    return this.accounting.getAccountingDetails();
+  }
+
+  @Post('btc/rebuild-accounting')
+  @UseGuards(AuthGuard('jwt'))
+  async rebuildAccounting() {
+    const details = await this.accounting.rebuildBtcAccounting();
+    return this.accounting.toUserPortfolio(details.portfolio);
   }
 }

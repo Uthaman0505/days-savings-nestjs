@@ -29,6 +29,8 @@ import type {
   LunoTransactionsResponse,
   LunoTransfer,
   LunoTransfersResponse,
+  LunoUserTrade,
+  LunoUserTradesResponse,
   LunoWithdrawal,
   LunoWithdrawalsResponse,
 } from './luno.types';
@@ -194,6 +196,52 @@ export class LunoApiService {
       completed_timestamp: Number(row.completed_timestamp) || 0,
       expiration_timestamp: Number(row.expiration_timestamp) || 0,
       time_in_force: row.time_in_force,
+    };
+  }
+
+  async getUserTrades(pair = LUNO_MARKET_PAIR): Promise<LunoUserTrade[]> {
+    const all: LunoUserTrade[] = [];
+    let before: number | undefined;
+    for (let page = 0; page < LUNO_MAX_PAGES; page += 1) {
+      const query = new URLSearchParams({
+        pair,
+        limit: String(LUNO_PAGE_LIMIT),
+      });
+      if (before) {
+        query.set('before', String(before));
+      }
+      const raw = await this.getJson<LunoUserTradesResponse>(
+        `${LUNO_GET_PATHS.trades}?${query.toString()}`,
+        { auth: true },
+      );
+      const chunk = Array.isArray(raw?.trades) ? raw.trades : [];
+      all.push(...chunk.map((row) => this.parseUserTrade(row, pair)));
+      if (chunk.length < LUNO_PAGE_LIMIT) {
+        break;
+      }
+      const oldest = chunk[chunk.length - 1]?.timestamp;
+      if (!oldest || oldest === before) {
+        break;
+      }
+      before = Number(oldest);
+    }
+    return all;
+  }
+
+  parseUserTrade(row: LunoUserTrade, fallbackPair: string): LunoUserTrade {
+    return {
+      base: this.decimal(row.base ?? '0', 'base'),
+      counter: this.decimal(row.counter ?? '0', 'counter'),
+      fee_base: this.decimal(row.fee_base ?? '0', 'fee_base'),
+      fee_counter: this.decimal(row.fee_counter ?? '0', 'fee_counter'),
+      is_buy: Boolean(row.is_buy),
+      order_id: String(row.order_id ?? ''),
+      pair: String(row.pair ?? fallbackPair),
+      price: this.decimal(row.price ?? '0', 'price'),
+      sequence: Number(row.sequence) || 0,
+      timestamp: Number(row.timestamp) || 0,
+      type: String(row.type ?? ''),
+      volume: this.decimal(row.volume ?? '0', 'volume'),
     };
   }
 

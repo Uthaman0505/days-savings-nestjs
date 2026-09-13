@@ -61,7 +61,12 @@ import { LunoOrderRow } from '../luno/entities/luno-order.entity';
 import { LunoSyncRun } from '../luno/entities/luno-sync-run.entity';
 import { LunoTransactionRow } from '../luno/entities/luno-transaction.entity';
 import { LunoTransferRow } from '../luno/entities/luno-transfer.entity';
+import { LunoUserTradeRow } from '../luno/entities/luno-user-trade.entity';
 import { LunoWithdrawalRow } from '../luno/entities/luno-withdrawal.entity';
+import { LunoBtcLot } from '../luno/entities/luno-btc-lot.entity';
+import { LunoBtcDisposal } from '../luno/entities/luno-btc-disposal.entity';
+import { LunoBtcDisposalLot } from '../luno/entities/luno-btc-disposal-lot.entity';
+import { LunoBtcAccountingSnapshot } from '../luno/entities/luno-btc-snapshot.entity';
 
 export const entities = [
   User,
@@ -121,4 +126,9 @@ export const entities = [
   LunoOrderRow,
   LunoWithdrawalRow,
   LunoTransferRow,
+  LunoUserTradeRow,
+  LunoBtcLot,
+  LunoBtcDisposal,
+  LunoBtcDisposalLot,
+  LunoBtcAccountingSnapshot,
 ];
