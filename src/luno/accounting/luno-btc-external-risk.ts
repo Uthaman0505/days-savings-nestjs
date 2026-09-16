@@ -460,57 +460,176 @@ function externalWaitOrReduceReason(
     : 'External risk is elevated, so the suggested amount was reduced.';
 }
 
+/**
+ * Stronger event types win when a headline matches more than one group.
+ * On equal keyword weight, this order decides the category.
+ */
+export const NEWS_CATEGORY_PRECEDENCE: readonly LunoBtcNewsCategory[] = [
+  'REGULATION',
+  'MACRO',
+  'BANKING',
+  'GEOPOLITICAL',
+  'INSTITUTIONAL',
+  'CRYPTO',
+  'NONE',
+];
+
+type NewsCategoryKeyword = {
+  category: Exclude<LunoBtcNewsCategory, 'NONE'>;
+  weight: 1 | 2 | 3;
+  pattern: RegExp;
+};
+
+const NEWS_CATEGORY_KEYWORDS: NewsCategoryKeyword[] = [
+  { category: 'REGULATION', weight: 3, pattern: /\bsec\b/ },
+  { category: 'REGULATION', weight: 3, pattern: /\bcftc\b/ },
+  { category: 'REGULATION', weight: 3, pattern: /\bclarity act\b/ },
+  { category: 'REGULATION', weight: 3, pattern: /\bmica\b/ },
+  { category: 'REGULATION', weight: 3, pattern: /\bdigital asset law\b/ },
+  { category: 'REGULATION', weight: 3, pattern: /\bcrypto policy\b/ },
+  { category: 'REGULATION', weight: 3, pattern: /\benforcement\b/ },
+  { category: 'REGULATION', weight: 3, pattern: /\blawsuit\b/ },
+  { category: 'REGULATION', weight: 3, pattern: /\bregulators?\b/ },
+  { category: 'REGULATION', weight: 2, pattern: /\bregulat(?:ion|ory|ions)\b/ },
+  { category: 'REGULATION', weight: 2, pattern: /\blegislation\b/ },
+  { category: 'REGULATION', weight: 2, pattern: /\blicens(?:e|es|ing)\b/ },
+  { category: 'REGULATION', weight: 2, pattern: /\bapproval\b|\bapproved\b/ },
+  { category: 'REGULATION', weight: 2, pattern: /\bbans?\b/ },
+  { category: 'REGULATION', weight: 2, pattern: /\bcourt\b/ },
+  { category: 'REGULATION', weight: 2, pattern: /\bcompliance\b/ },
+  { category: 'REGULATION', weight: 1, pattern: /\bframework\b/ },
+  { category: 'REGULATION', weight: 1, pattern: /\blaw\b/ },
+  { category: 'REGULATION', weight: 1, pattern: /\bbill\b/ },
+  { category: 'REGULATION', weight: 1, pattern: /\bact\b/ },
+
+  { category: 'MACRO', weight: 3, pattern: /\bfomc\b/ },
+  { category: 'MACRO', weight: 3, pattern: /\bfederal reserve\b/ },
+  { category: 'MACRO', weight: 3, pattern: /\bmonetary policy\b/ },
+  { category: 'MACRO', weight: 3, pattern: /\bcentral banks?\b/ },
+  { category: 'MACRO', weight: 3, pattern: /\binterest rates?\b/ },
+  { category: 'MACRO', weight: 3, pattern: /\brate (?:cut|hike|decision)s?\b/ },
+  { category: 'MACRO', weight: 3, pattern: /\bnon[- ]?farm payrolls?\b/ },
+  { category: 'MACRO', weight: 3, pattern: /\bnfp\b/ },
+  { category: 'MACRO', weight: 3, pattern: /\bpce\b/ },
+  { category: 'MACRO', weight: 3, pattern: /\bcpi\b/ },
+  { category: 'MACRO', weight: 3, pattern: /\bpowell\b/ },
+  { category: 'MACRO', weight: 3, pattern: /\becb\b/ },
+  { category: 'MACRO', weight: 3, pattern: /\bboe\b/ },
+  { category: 'MACRO', weight: 3, pattern: /\bboj\b/ },
+  { category: 'MACRO', weight: 2, pattern: /\bfed\b/ },
+  { category: 'MACRO', weight: 2, pattern: /\binflation\b/ },
+  { category: 'MACRO', weight: 2, pattern: /\bunemployment\b/ },
+  { category: 'MACRO', weight: 2, pattern: /\beconomic growth\b/ },
+  { category: 'MACRO', weight: 2, pattern: /\brecession\b/ },
+  { category: 'MACRO', weight: 2, pattern: /\bgdp\b/ },
+  { category: 'MACRO', weight: 2, pattern: /\btreasury yields?\b/ },
+  { category: 'MACRO', weight: 2, pattern: /\bbond yields?\b/ },
+  { category: 'MACRO', weight: 2, pattern: /\bemployment\b/ },
+  { category: 'MACRO', weight: 1, pattern: /\bliquidity\b/ },
+
+  {
+    category: 'BANKING',
+    weight: 3,
+    pattern: /\bbank (?:failure|collapse|run)s?\b/,
+  },
+  { category: 'BANKING', weight: 3, pattern: /\bbanking stress\b/ },
+  { category: 'BANKING', weight: 3, pattern: /\bbanking crisis\b/ },
+  { category: 'BANKING', weight: 3, pattern: /\bliquidity crisis\b/ },
+  { category: 'BANKING', weight: 3, pattern: /\bdeposit outflows?\b/ },
+  { category: 'BANKING', weight: 3, pattern: /\bcredit crisis\b/ },
+  {
+    category: 'BANKING',
+    weight: 3,
+    pattern: /\bfinancial institution failure\b/,
+  },
+  {
+    category: 'BANKING',
+    weight: 3,
+    pattern: /\bsvb\b|\bsilicon valley bank\b/,
+  },
+  {
+    category: 'BANKING',
+    weight: 3,
+    pattern:
+      /\b(?:bank(?:ing)? .{0,40}insolvency|insolvency .{0,40}bank(?:ing)?)\b/,
+  },
+
+  { category: 'GEOPOLITICAL', weight: 3, pattern: /\btrade war\b/ },
+  { category: 'GEOPOLITICAL', weight: 3, pattern: /\bmilitary conflict\b/ },
+  {
+    category: 'GEOPOLITICAL',
+    weight: 3,
+    pattern: /\bgeopolitical tensions?\b/,
+  },
+  { category: 'GEOPOLITICAL', weight: 3, pattern: /\binvasion\b/ },
+  { category: 'GEOPOLITICAL', weight: 3, pattern: /\bsanctions?\b/ },
+  { category: 'GEOPOLITICAL', weight: 3, pattern: /\bembargo\b/ },
+  { category: 'GEOPOLITICAL', weight: 3, pattern: /\bceasefire\b/ },
+  { category: 'GEOPOLITICAL', weight: 3, pattern: /\bmissile\b/ },
+  { category: 'GEOPOLITICAL', weight: 2, pattern: /\bgeopolitical\b/ },
+  { category: 'GEOPOLITICAL', weight: 2, pattern: /\bwars?\b/ },
+  { category: 'GEOPOLITICAL', weight: 1, pattern: /\battack\b/ },
+
+  { category: 'INSTITUTIONAL', weight: 3, pattern: /\betfs?\b/ },
+  {
+    category: 'INSTITUTIONAL',
+    weight: 3,
+    pattern: /\binstitutional (?:adoption|inflows?|outflows?|demand)\b/,
+  },
+  {
+    category: 'INSTITUTIONAL',
+    weight: 3,
+    pattern: /\bfund (?:inflows?|outflows?)\b/,
+  },
+  { category: 'INSTITUTIONAL', weight: 3, pattern: /\bblackrock\b/ },
+  { category: 'INSTITUTIONAL', weight: 3, pattern: /\bfidelity\b/ },
+  { category: 'INSTITUTIONAL', weight: 3, pattern: /\bcorporate treasury\b/ },
+  { category: 'INSTITUTIONAL', weight: 3, pattern: /\btreasury purchase\b/ },
+  { category: 'INSTITUTIONAL', weight: 2, pattern: /\basset managers?\b/ },
+  { category: 'INSTITUTIONAL', weight: 2, pattern: /\binstitutional\b/ },
+  { category: 'INSTITUTIONAL', weight: 2, pattern: /\bgrayscale\b/ },
+  { category: 'INSTITUTIONAL', weight: 2, pattern: /\bmicrostrategy\b/ },
+
+  { category: 'CRYPTO', weight: 3, pattern: /\bbitcoin\b/ },
+  { category: 'CRYPTO', weight: 3, pattern: /\bbtc\b/ },
+  { category: 'CRYPTO', weight: 3, pattern: /\bethereum\b/ },
+  { category: 'CRYPTO', weight: 3, pattern: /\beth\b/ },
+  { category: 'CRYPTO', weight: 3, pattern: /\bhacks?\b|\bhacked\b/ },
+  { category: 'CRYPTO', weight: 3, pattern: /\bexploits?\b/ },
+  { category: 'CRYPTO', weight: 3, pattern: /\bnetwork outage\b/ },
+  { category: 'CRYPTO', weight: 3, pattern: /\bsecurity breach\b/ },
+  { category: 'CRYPTO', weight: 2, pattern: /\bcrypto(?:currency)?\b/ },
+  { category: 'CRYPTO', weight: 2, pattern: /\bexchange\b/ },
+  { category: 'CRYPTO', weight: 2, pattern: /\bstablecoins?\b/ },
+  { category: 'CRYPTO', weight: 2, pattern: /\bblockchain\b/ },
+  { category: 'CRYPTO', weight: 2, pattern: /\bwallets?\b/ },
+  { category: 'CRYPTO', weight: 2, pattern: /\bcustody\b/ },
+  { category: 'CRYPTO', weight: 2, pattern: /\bminers?\b|\bmining\b/ },
+  { category: 'CRYPTO', weight: 2, pattern: /\bliquidation\b/ },
+  { category: 'CRYPTO', weight: 1, pattern: /\bprotocol\b/ },
+];
+
 function classifyNewsCategory(text: string): LunoBtcNewsCategory {
-  if (
-    /\b(bank failure|bank collapse|svb|silicon valley bank|credit suisse|fdic|banking crisis|bank run)\b/.test(
-      text,
-    )
-  ) {
-    return 'BANKING';
+  const scores = new Map<LunoBtcNewsCategory, number>();
+  for (const keyword of NEWS_CATEGORY_KEYWORDS) {
+    if (!keyword.pattern.test(text)) {
+      continue;
+    }
+    scores.set(
+      keyword.category,
+      Math.max(scores.get(keyword.category) ?? 0, keyword.weight),
+    );
   }
-  if (
-    /\b(war|invasion|sanction|sanctions|missile|geopolitical|conflict|election)\b/.test(
-      text,
-    )
-  ) {
-    return 'GEOPOLITICAL';
+  let winner: LunoBtcNewsCategory = 'NONE';
+  let winnerScore = 0;
+  for (const category of NEWS_CATEGORY_PRECEDENCE) {
+    const score = scores.get(category) ?? 0;
+    if (score > winnerScore) {
+      winner = category;
+      winnerScore = score;
+    }
   }
-  if (
-    /\b(sec|cftc|esma|mas|ban|bans|lawsuit|regulation|regulatory|compliance|licensing)\b/.test(
-      text,
-    )
-  ) {
-    return 'REGULATION';
-  }
-  if (
-    /\b(etf|blackrock|fidelity|microstrategy|institutional|grayscale)\b/.test(
-      text,
-    )
-  ) {
-    return 'INSTITUTIONAL';
-  }
-  if (
-    /\b(war|invasion|sanction|sanctions|missile|geopolitical|conflict|election)\b/.test(
-      text,
-    )
-  ) {
-    return 'GEOPOLITICAL';
-  }
-  if (
-    /\b(fed|fomc|ecb|boj|interest rate|rate hike|rate cut|inflation|cpi|pce|unemployment|nonfarm|payroll|gdp|central bank)\b/.test(
-      text,
-    )
-  ) {
-    return 'MACRO';
-  }
-  if (
-    /\b(bitcoin|btc|crypto|cryptocurrency|exchange|binance|coinbase|luno|stablecoin)\b/.test(
-      text,
-    )
-  ) {
-    return 'CRYPTO';
-  }
-  return 'NONE';
+  return winner;
 }
 
 function classifyNewsSeverity(

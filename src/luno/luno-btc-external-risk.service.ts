@@ -195,12 +195,19 @@ export class LunoBtcExternalRiskService implements OnModuleInit {
         take: 80,
       }),
     ]);
+    const news = newsRows.map(fromNewsRow);
+    const reclassified = newsRows.filter((row, index) =>
+      applyNewsClassification(row, news[index]),
+    );
+    if (reclassified.length > 0) {
+      await this.newsEvents.save(reclassified);
+    }
     const market = await this.market.getLatestBtcMarketSnapshot();
     const snapshot = calculateExternalRiskSnapshot({
       now,
       lastSuccessfulFetchAt: lastFetch,
       sourceHealthy: sourceHealthy || lastFetch != null,
-      news: newsRows.map(fromNewsRow),
+      news,
       economic: economicRows.map(fromEconomicRow),
       market,
       lookaheadMs: this.newsConfig.lookaheadHours * 60 * 60 * 1000,
@@ -450,7 +457,7 @@ export class LunoBtcExternalRiskService implements OnModuleInit {
 }
 
 function fromNewsRow(row: LunoBtcNewsEvent): ClassifiedNewsEvent {
-  return {
+  return classifyNews({
     externalId: row.externalId,
     provider: row.provider,
     sourceName: row.sourceName,
@@ -460,14 +467,32 @@ function fromNewsRow(row: LunoBtcNewsEvent): ClassifiedNewsEvent {
     publishedAt: row.publishedAt,
     countryOrRegion: row.countryOrRegion,
     raw: row.rawMetadataJson ?? {},
-    normalizedHeadline: row.normalizedHeadline,
-    category: row.category,
-    relevanceScore: Number(row.relevanceScore),
-    severity: row.severity,
-    sentimentDirection: row.sentimentDirection,
-    btcSpecific: row.btcSpecific,
-    macroSpecific: row.macroSpecific,
-  };
+  });
+}
+
+function applyNewsClassification(
+  row: LunoBtcNewsEvent,
+  classified: ClassifiedNewsEvent,
+): boolean {
+  const changed =
+    row.category !== classified.category ||
+    row.severity !== classified.severity ||
+    Number(row.relevanceScore) !== classified.relevanceScore ||
+    row.btcSpecific !== classified.btcSpecific ||
+    row.macroSpecific !== classified.macroSpecific ||
+    row.sentimentDirection !== classified.sentimentDirection ||
+    row.normalizedHeadline !== classified.normalizedHeadline;
+  if (!changed) {
+    return false;
+  }
+  row.category = classified.category;
+  row.severity = classified.severity;
+  row.relevanceScore = String(classified.relevanceScore);
+  row.btcSpecific = classified.btcSpecific;
+  row.macroSpecific = classified.macroSpecific;
+  row.sentimentDirection = classified.sentimentDirection;
+  row.normalizedHeadline = classified.normalizedHeadline;
+  return true;
 }
 
 function fromEconomicRow(row: LunoBtcEconomicEvent): ClassifiedEconomicEvent {
