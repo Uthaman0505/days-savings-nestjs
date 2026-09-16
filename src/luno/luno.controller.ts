@@ -27,6 +27,7 @@ import { LunoBtcAccountingService } from './luno-btc-accounting.service';
 import { LunoBtcBudgetService } from './luno-btc-budget.service';
 import { LunoBtcDecisionService } from './luno-btc-decision.service';
 import { LunoBtcMarketService } from './luno-btc-market.service';
+import { LunoBtcExternalRiskService } from './luno-btc-external-risk.service';
 
 type AuthedRequest = Request & { user?: JwtUser };
 
@@ -47,6 +48,7 @@ export class LunoController {
     private readonly budget: LunoBtcBudgetService,
     private readonly decision: LunoBtcDecisionService,
     private readonly market: LunoBtcMarketService,
+    private readonly externalRisk: LunoBtcExternalRiskService,
   ) {}
 
   @Get('ticker')
@@ -86,6 +88,12 @@ export class LunoController {
       await this.market.calculateBtcMarketSnapshot();
     } catch {
       // Market intelligence is advisory and must not fail a Luno sync.
+    }
+    try {
+      await this.externalRisk.syncExternalRisk();
+      await this.externalRisk.recalculateExternalRisk();
+    } catch {
+      // External risk is advisory and must not fail a Luno sync.
     }
     return result;
   }
@@ -188,7 +196,31 @@ export class LunoController {
   @Get('btc/decision/final')
   @UseGuards(AuthGuard('jwt'))
   getFinalDecision(@Req() req: AuthedRequest) {
-    return this.market.getFinalDecision(requireUserId(req));
+    return this.externalRisk.getFinalDecision(requireUserId(req));
+  }
+
+  @Get('btc/external-risk')
+  @UseGuards(AuthGuard('jwt'))
+  getExternalRisk() {
+    return this.externalRisk.getExternalRisk();
+  }
+
+  @Get('btc/external-risk/events')
+  @UseGuards(AuthGuard('jwt'))
+  getExternalRiskEvents() {
+    return this.externalRisk.getExternalRiskEvents();
+  }
+
+  @Post('btc/external-risk/sync')
+  @UseGuards(AuthGuard('jwt'))
+  syncExternalRisk() {
+    return this.externalRisk.syncExternalRisk();
+  }
+
+  @Post('btc/external-risk/recalculate')
+  @UseGuards(AuthGuard('jwt'))
+  recalculateExternalRisk() {
+    return this.externalRisk.recalculateExternalRisk();
   }
 
   @Post('btc/market-context/recalculate')

@@ -7,6 +7,7 @@ import { LunoBtcAccountingService } from './luno-btc-accounting.service';
 import { LunoBtcBudgetService } from './luno-btc-budget.service';
 import { LunoBtcDecisionService } from './luno-btc-decision.service';
 import { LunoBtcMarketService } from './luno-btc-market.service';
+import { LunoBtcExternalRiskService } from './luno-btc-external-risk.service';
 import { LunoHealthService } from './luno-health.service';
 
 /**
@@ -99,8 +100,15 @@ async function main(): Promise<void> {
       );
       try {
         const market = app.get(LunoBtcMarketService);
-        await market.syncBtcMarketData();
-        await market.calculateBtcMarketSnapshot();
+        try {
+          await market.syncBtcMarketData();
+          await market.calculateBtcMarketSnapshot();
+        } catch (error) {
+          Logger.warn(
+            `Market candle refresh skipped: ${error instanceof Error ? error.message : 'unknown'}`,
+            'LunoBtcMarket',
+          );
+        }
         const final = await market.getFinalDecision(owner[0].id);
         const context = final.marketContext;
         Logger.log(
@@ -117,6 +125,28 @@ async function main(): Promise<void> {
         Logger.warn(
           `Market summary skipped: ${error instanceof Error ? error.message : 'unknown'}`,
           'LunoBtcMarket',
+        );
+      }
+      try {
+        const risk = app.get(LunoBtcExternalRiskService);
+        await risk.syncExternalRisk();
+        await risk.recalculateExternalRisk();
+        const combined = await risk.getFinalDecision(owner[0].id);
+        Logger.log(
+          [
+            'BTC external risk (Phase 6)',
+            `status=${combined.externalRisk.status} level=${combined.externalRisk.riskLevel} category=${combined.externalRisk.dominantCategory} confidence=${combined.externalRisk.confidence}`,
+            `marketReaction=${combined.externalRisk.marketReactionConfirmed} upcomingMacro=${combined.externalRisk.upcomingMacroEventCount}`,
+            `base=${combined.baseDecision.action} marketAdjusted=${combined.marketAdjustedDecision.action} final=${combined.finalDecision.action} modified=${combined.finalDecision.modifiedByExternalRisk}`,
+            ...combined.externalRisk.reasons,
+            ...combined.finalDecision.reason,
+          ].join('\n'),
+          'LunoBtcExternalRisk',
+        );
+      } catch (error) {
+        Logger.warn(
+          `External risk summary skipped: ${error instanceof Error ? error.message : 'unknown'}`,
+          'LunoBtcExternalRisk',
         );
       }
     } else {

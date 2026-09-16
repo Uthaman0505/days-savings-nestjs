@@ -6,6 +6,7 @@ import { LunoBtcAccountingService } from './luno-btc-accounting.service';
 import { LunoBtcBudgetService } from './luno-btc-budget.service';
 import { LunoBtcDecisionService } from './luno-btc-decision.service';
 import { LunoBtcMarketService } from './luno-btc-market.service';
+import { LunoBtcExternalRiskService } from './luno-btc-external-risk.service';
 
 function guardsOn(
   methodName:
@@ -27,6 +28,10 @@ function guardsOn(
     | 'recalculateDecision'
     | 'getMarketContext'
     | 'getFinalDecision'
+    | 'getExternalRisk'
+    | 'getExternalRiskEvents'
+    | 'syncExternalRisk'
+    | 'recalculateExternalRisk'
     | 'recalculateMarketContext'
     | 'syncMarketData',
 ): unknown[] {
@@ -59,6 +64,10 @@ describe('LunoController', () => {
     expect(guardsOn('recalculateDecision')).toHaveLength(1);
     expect(guardsOn('getMarketContext')).toHaveLength(1);
     expect(guardsOn('getFinalDecision')).toHaveLength(1);
+    expect(guardsOn('getExternalRisk')).toHaveLength(1);
+    expect(guardsOn('getExternalRiskEvents')).toHaveLength(1);
+    expect(guardsOn('syncExternalRisk')).toHaveLength(1);
+    expect(guardsOn('recalculateExternalRisk')).toHaveLength(1);
     expect(guardsOn('recalculateMarketContext')).toHaveLength(1);
     expect(guardsOn('syncMarketData')).toHaveLength(1);
     expect(guardsOn('ticker')).toHaveLength(0);
@@ -82,6 +91,7 @@ describe('LunoController', () => {
       {} as unknown as LunoBtcBudgetService,
       {} as unknown as LunoBtcDecisionService,
       {} as unknown as LunoBtcMarketService,
+      {} as unknown as LunoBtcExternalRiskService,
     );
     await expect(controller.ticker()).resolves.toEqual({
       pair: 'XBTMYR',

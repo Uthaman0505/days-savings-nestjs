@@ -35,6 +35,8 @@ describe('Luno read-only surface', () => {
       'accounting/luno-btc-decision.ts',
       'accounting/luno-btc-market.ts',
       'luno-btc-market.service.ts',
+      'accounting/luno-btc-external-risk.ts',
+      'luno-btc-external-risk.service.ts',
       'luno.controller.ts',
     ]
       .map((file) => readFileSync(join(__dirname, file), 'utf8'))
