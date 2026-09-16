@@ -33,6 +33,8 @@ import type {
   LunoUserTradesResponse,
   LunoWithdrawal,
   LunoWithdrawalsResponse,
+  LunoCandle,
+  LunoCandlesResponse,
 } from './luno.types';
 
 export type LunoFetch = (
@@ -79,6 +81,35 @@ export class LunoApiService {
       status: raw.status,
       timestamp: Number(raw.timestamp) || 0,
     };
+  }
+
+  async getXbtMyrCandles(
+    durationSeconds: number,
+    sinceMs: number,
+  ): Promise<LunoCandle[]> {
+    // Luno candles are authenticated even though other market data is public.
+    if (!this.config.apiKeyId || !this.config.apiKeySecret) {
+      throw new LunoApiException(
+        'NOT_CONFIGURED',
+        'Luno candles require API authentication.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const path = `${LUNO_GET_PATHS.candles}?pair=${encodeURIComponent(LUNO_MARKET_PAIR)}&since=${sinceMs}&duration=${durationSeconds}`;
+    const raw = await this.getJson<LunoCandlesResponse>(path, { auth: true });
+    return this.parseCandles(raw);
+  }
+
+  parseCandles(raw: LunoCandlesResponse): LunoCandle[] {
+    const rows = Array.isArray(raw?.candles) ? raw.candles : [];
+    return rows.map((row) => ({
+      timestamp: Number(row.timestamp) || 0,
+      open: this.decimal(row.open, 'open'),
+      high: this.decimal(row.high, 'high'),
+      low: this.decimal(row.low, 'low'),
+      close: this.decimal(row.close, 'close'),
+      volume: this.decimal(row.volume ?? '0', 'volume'),
+    }));
   }
 
   async getBalances(): Promise<LunoAccountBalance[]> {

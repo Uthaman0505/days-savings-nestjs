@@ -6,6 +6,7 @@ import { User } from '../user/user.entity';
 import { LunoBtcAccountingService } from './luno-btc-accounting.service';
 import { LunoBtcBudgetService } from './luno-btc-budget.service';
 import { LunoBtcDecisionService } from './luno-btc-decision.service';
+import { LunoBtcMarketService } from './luno-btc-market.service';
 import { LunoHealthService } from './luno-health.service';
 
 /**
@@ -96,6 +97,28 @@ async function main(): Promise<void> {
         ].join('\n'),
         'LunoBtcDecision',
       );
+      try {
+        const market = app.get(LunoBtcMarketService);
+        await market.syncBtcMarketData();
+        await market.calculateBtcMarketSnapshot();
+        const final = await market.getFinalDecision(owner[0].id);
+        const context = final.marketContext;
+        Logger.log(
+          [
+            'BTC market context (Phase 5)',
+            `source=${context?.marketDataSource ?? 'n/a'} status=${context?.marketContextStatus ?? 'n/a'}`,
+            `direction=${context?.direction ?? 'n/a'} buying=${context?.buyingCondition ?? 'n/a'} stability=${context?.stability ?? 'n/a'} confidence=${context?.confidence ?? 'n/a'}`,
+            `base=${final.baseDecision.action} final=${final.finalDecision.action} modified=${final.finalDecision.modifiedByMarketContext}`,
+            ...(context?.reasons ?? []),
+          ].join('\n'),
+          'LunoBtcMarket',
+        );
+      } catch (error) {
+        Logger.warn(
+          `Market summary skipped: ${error instanceof Error ? error.message : 'unknown'}`,
+          'LunoBtcMarket',
+        );
+      }
     } else {
       Logger.log('No user found for budget summary.', 'LunoBtcBudget');
     }

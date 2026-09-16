@@ -9,6 +9,7 @@ export const LUNO_ASSET_MYR = 'MYR';
 
 export const LUNO_GET_PATHS = {
   ticker: '/api/1/ticker',
+  candles: '/api/exchange/1/candles',
   balances: '/api/1/balance',
   transactions: '/api/1/accounts/{id}/transactions',
   orders: '/api/1/listorders',
@@ -22,6 +23,7 @@ export function isAllowedLunoGetPath(pathAndQuery: string): boolean {
   const pathname = pathAndQuery.split('?')[0] ?? '';
   if (
     pathname === LUNO_GET_PATHS.ticker ||
+    pathname === LUNO_GET_PATHS.candles ||
     pathname === LUNO_GET_PATHS.balances ||
     pathname === LUNO_GET_PATHS.orders ||
     pathname === LUNO_GET_PATHS.trades ||

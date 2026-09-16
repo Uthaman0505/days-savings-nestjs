@@ -5,6 +5,7 @@ import {
   maxDecimal,
   multiplyDecimalStrings,
   roundDecimal,
+  sqrtDecimal,
 } from './luno-decimal';
 
 describe('luno-decimal', () => {
@@ -31,5 +32,11 @@ describe('luno-decimal', () => {
   it('rejects scientific notation and NaN', () => {
     expect(() => asDecimalString('1e-8')).toThrow('INVALID_DECIMAL');
     expect(() => asDecimalString(Number.NaN)).toThrow('INVALID_DECIMAL');
+  });
+
+  it('takes decimal-safe square roots', () => {
+    expect(sqrtDecimal('4', 2)).toBe('2');
+    expect(sqrtDecimal('2', 2)).toBe('1.41');
+    expect(sqrtDecimal('-1')).toBeNull();
   });
 });
