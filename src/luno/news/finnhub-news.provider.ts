@@ -74,8 +74,8 @@ export class FinnhubNewsProvider
 
   async fetchLatestNews(): Promise<ProviderNewsItem[]> {
     const [crypto, general] = await Promise.all([
-      this.getJson<FinnhubNewsRow[]>('/news?category=crypto'),
-      this.getJson<FinnhubNewsRow[]>('/news?category=general'),
+      this.getJsonOptional<FinnhubNewsRow[]>('/news?category=crypto', []),
+      this.getJsonOptional<FinnhubNewsRow[]>('/news?category=general', []),
     ]);
     const rows = [
       ...(Array.isArray(crypto) ? crypto : []),
@@ -97,9 +97,9 @@ export class FinnhubNewsProvider
   async fetchEconomicEvents(now = new Date()): Promise<ProviderEconomicItem[]> {
     const from = isoDate(new Date(now.getTime() - 24 * 60 * 60 * 1000));
     const to = isoDate(new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000));
-    const raw = await this.getJson<{ economicCalendar?: FinnhubEconomicRow[] }>(
-      `/calendar/economic?from=${from}&to=${to}`,
-    );
+    const raw = await this.getJsonOptional<{
+      economicCalendar?: FinnhubEconomicRow[];
+    }>(`/calendar/economic?from=${from}&to=${to}`, { economicCalendar: [] });
     const rows = Array.isArray(raw?.economicCalendar)
       ? raw.economicCalendar
       : [];
@@ -174,6 +174,17 @@ export class FinnhubNewsProvider
   private async getJson<T>(path: string): Promise<T> {
     const url = `${this.baseUrl.replace(/\/$/, '')}${path}${path.includes('?') ? '&' : '?'}token=${encodeURIComponent(this.apiKey)}`;
     return this.getJsonOnce<T>(url, true);
+  }
+
+  private async getJsonOptional<T>(path: string, fallback: T): Promise<T> {
+    try {
+      return await this.getJson<T>(path);
+    } catch (error) {
+      this.logger.warn(
+        `Finnhub optional ${path} skipped: ${error instanceof Error ? error.message : 'unknown'}`,
+      );
+      return fallback;
+    }
   }
 
   private async getJsonOnce<T>(

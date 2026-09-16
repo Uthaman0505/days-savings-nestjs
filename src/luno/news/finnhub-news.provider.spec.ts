@@ -79,4 +79,38 @@ describe('FinnhubNewsProvider', () => {
     await expect(provider.fetchLatestNews()).resolves.toEqual([]);
     expect(calls).toBeGreaterThanOrEqual(2);
   });
+
+  it('keeps crypto news when the economic calendar is forbidden', async () => {
+    const fetchImpl = jest.fn(async (url: string) => {
+      if (url.includes('/calendar/economic')) {
+        return { ok: false, status: 403, json: async () => ({}) } as Response;
+      }
+      if (url.includes('/news?category=crypto')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            {
+              datetime: 1_758_024_000,
+              headline: 'Bitcoin network activity stays steady',
+              id: 12,
+              source: 'Reuters',
+              summary: 'Ordinary bitcoin commentary.',
+            },
+          ],
+        } as Response;
+      }
+      return { ok: true, status: 200, json: async () => [] } as Response;
+    });
+    const provider = new FinnhubNewsProvider(
+      'token',
+      'https://finnhub.io/api/v1',
+      fetchImpl,
+    );
+    const news = await provider.fetchLatestNews();
+    expect(news).toHaveLength(1);
+    await expect(
+      provider.fetchEconomicEvents(new Date('2026-09-16T12:00:00.000Z')),
+    ).resolves.toEqual([]);
+  });
 });
