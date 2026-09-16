@@ -1,5 +1,6 @@
 import { classifyLunoTransactions } from './luno-btc-classify';
 import {
+  calendarMonthKey,
   collectExcludedAssets,
   summarizeCurrentMonthBuys,
 } from './luno-btc-activity';
@@ -100,6 +101,91 @@ describe('Luno BTC activity helpers', () => {
     expect(month.btcReceived).toBe('0.00015637');
     expect(month.latestBuyAt).toBe('2026-09-16T00:00:00.000Z');
     expect(month.month).toBe('2026-09');
+  });
+
+  it('uses Asia/Kuala_Lumpur for first day, last day, and UTC rollover', () => {
+    expect(calendarMonthKey(new Date('2026-08-31T16:00:00.000Z'))).toBe(
+      '2026-09',
+    );
+    expect(calendarMonthKey(new Date('2026-09-01T00:00:00+08:00'))).toBe(
+      '2026-09',
+    );
+    expect(calendarMonthKey(new Date('2026-09-30T15:59:59.999Z'))).toBe(
+      '2026-09',
+    );
+    expect(calendarMonthKey(new Date('2026-09-30T16:00:00.000Z'))).toBe(
+      '2026-10',
+    );
+  });
+
+  it('ignores sells and excluded assets when summing monthly used', () => {
+    const events = classifyLunoTransactions(
+      [
+        tx({
+          id: '1',
+          lunoAccountId: BTC,
+          rowIndex: '1',
+          reference: 'buy',
+          currency: 'XBT',
+          kind: 'EXCHANGE',
+          description: 'Bought',
+          balanceDelta: '0.0001',
+          occurredAt: new Date('2026-09-14T00:00:00.000Z'),
+        }),
+        tx({
+          id: '2',
+          lunoAccountId: MYR,
+          rowIndex: '1',
+          reference: 'buy',
+          currency: 'MYR',
+          kind: 'EXCHANGE',
+          description: 'Bought',
+          balanceDelta: '-30',
+          occurredAt: new Date('2026-09-14T00:00:00.000Z'),
+        }),
+        tx({
+          id: '3',
+          lunoAccountId: BTC,
+          rowIndex: '2',
+          reference: 'sell',
+          currency: 'XBT',
+          kind: 'EXCHANGE',
+          description: 'Sold',
+          balanceDelta: '-0.00005',
+          occurredAt: new Date('2026-09-15T00:00:00.000Z'),
+        }),
+        tx({
+          id: '4',
+          lunoAccountId: MYR,
+          rowIndex: '2',
+          reference: 'sell',
+          currency: 'MYR',
+          kind: 'EXCHANGE',
+          description: 'Sold',
+          balanceDelta: '20',
+          occurredAt: new Date('2026-09-15T00:00:00.000Z'),
+        }),
+        tx({
+          id: '5',
+          lunoAccountId: 'eth',
+          rowIndex: '1',
+          reference: 'eth',
+          currency: 'ETH',
+          kind: 'EXCHANGE',
+          description: 'Bought ETH',
+          balanceDelta: '1',
+          occurredAt: new Date('2026-09-16T00:00:00.000Z'),
+        }),
+      ],
+      BTC,
+      MYR,
+    );
+    const month = summarizeCurrentMonthBuys(
+      events,
+      new Date('2026-09-16T12:00:00.000Z'),
+    );
+    expect(month.buyCount).toBe(1);
+    expect(month.purchaseTotalMyr).toBe('30');
   });
 
   it('lists excluded non-BTC assets once', () => {

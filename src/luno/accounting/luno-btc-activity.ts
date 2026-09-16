@@ -53,11 +53,23 @@ export function collectExcludedAssets(
   return rows.sort((a, b) => a.asset.localeCompare(b.asset));
 }
 
-export function summarizeCurrentMonthBuys(
+export function monthStartDate(monthKey: string): string {
+  return `${monthKey}-01`;
+}
+
+export function monthKeyFromBudgetDate(value: string | Date): string {
+  if (typeof value === 'string') {
+    return value.slice(0, 7);
+  }
+  const year = value.getUTCFullYear().toString().padStart(4, '0');
+  const month = (value.getUTCMonth() + 1).toString().padStart(2, '0');
+  return `${year}-${month}`;
+}
+
+export function summarizeMonthBuys(
   events: ClassifiedEvent[],
-  now = new Date(),
+  month: string,
 ): CurrentMonthBuys {
-  const month = calendarMonthKey(now);
   const buys = events.filter(
     (row) =>
       row.classification === 'BTC_BUY' &&
@@ -81,6 +93,13 @@ export function summarizeCurrentMonthBuys(
     btcReceived,
     latestBuyAt: latest ? latest.toISOString() : null,
   };
+}
+
+export function summarizeCurrentMonthBuys(
+  events: ClassifiedEvent[],
+  now = new Date(),
+): CurrentMonthBuys {
+  return summarizeMonthBuys(events, calendarMonthKey(now));
 }
 
 export function effectiveBuyPriceMyr(event: ClassifiedEvent): string | null {

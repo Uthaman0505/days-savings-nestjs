@@ -1,7 +1,10 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { DataSource } from 'typeorm';
 import { AppModule } from '../app.module';
+import { User } from '../user/user.entity';
 import { LunoBtcAccountingService } from './luno-btc-accounting.service';
+import { LunoBtcBudgetService } from './luno-btc-budget.service';
 import { LunoHealthService } from './luno-health.service';
 
 /**
@@ -52,6 +55,38 @@ async function main(): Promise<void> {
     Logger.warn(
       `Accounting summary skipped: ${error instanceof Error ? error.message : 'unknown'}`,
       'LunoBtcAccounting',
+    );
+  }
+  try {
+    const users = app.get(DataSource).getRepository(User);
+    const owner = await users.find({
+      take: 1,
+      order: { createdAt: 'ASC' },
+    });
+    if (owner[0]) {
+      const budget = app.get(LunoBtcBudgetService);
+      const view = await budget.getCurrentBudget(owner[0].id);
+      const context = await budget.getStrategyContext(owner[0].id);
+      Logger.log(
+        [
+          'BTC monthly budget (Phase 3)',
+          `user=${owner[0].id}`,
+          `month=${view.month} status=${view.status}`,
+          `budget=${view.monthlyBudgetMyr ?? 'not set'} used=${view.usedMyr} remaining=${view.remainingMyr ?? 'n/a'}`,
+          `maxAllowedNewSpend=${view.maxAllowedNewSpendMyr} buyCount=${view.buyCount} btcReceived=${view.btcReceived}`,
+          `normal=${view.normalBuyAllocationMyr ?? 'n/a'} dip=${view.dipReserveAllocationMyr ?? 'n/a'}`,
+          `lunoMyrAvailable=${view.lunoMyrAvailableMyr ?? 'n/a'} protectedProfit=${view.protectedProfitMyr} reinvestmentReserve=${view.reinvestmentReserveMyr}`,
+          `strategyMoneyReady=${context.strategyMoneyReady} accountingStatus=${context.accountingStatus}`,
+        ].join('\n'),
+        'LunoBtcBudget',
+      );
+    } else {
+      Logger.log('No user found for budget summary.', 'LunoBtcBudget');
+    }
+  } catch (error) {
+    Logger.warn(
+      `Budget summary skipped: ${error instanceof Error ? error.message : 'unknown'}`,
+      'LunoBtcBudget',
     );
   }
   await app.close();

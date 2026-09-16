@@ -2,6 +2,8 @@ import { LunoController } from './luno.controller';
 import { LunoHealthService } from './luno-health.service';
 import { LunoApiService } from './luno-api.service';
 import { LunoSyncService } from './luno-sync.service';
+import { LunoBtcAccountingService } from './luno-btc-accounting.service';
+import { LunoBtcBudgetService } from './luno-btc-budget.service';
 
 function guardsOn(
   methodName:
@@ -10,7 +12,14 @@ function guardsOn(
     | 'ticker'
     | 'btcPortfolio'
     | 'btcAccountingDetails'
-    | 'rebuildAccounting',
+    | 'rebuildAccounting'
+    | 'getCurrentBudget'
+    | 'createCurrentBudget'
+    | 'updateCurrentBudget'
+    | 'getBudgetHistory'
+    | 'getMoneyBuckets'
+    | 'allocateMoneyBucket'
+    | 'getStrategyContext',
 ): unknown[] {
   const proto = LunoController.prototype as unknown as Record<
     string,
@@ -23,12 +32,20 @@ function guardsOn(
 }
 
 describe('LunoController', () => {
-  it('guards health and sync with JWT and exposes a public ticker', async () => {
+  it('guards health, sync, accounting, and budget endpoints with JWT', async () => {
     expect(guardsOn('healthCheck')).toHaveLength(1);
     expect(guardsOn('syncNow')).toHaveLength(1);
     expect(guardsOn('btcPortfolio')).toHaveLength(1);
     expect(guardsOn('btcAccountingDetails')).toHaveLength(1);
     expect(guardsOn('rebuildAccounting')).toHaveLength(1);
+    expect(guardsOn('getCurrentBudget')).toHaveLength(1);
+    expect(guardsOn('createCurrentBudget')).toHaveLength(1);
+    expect(guardsOn('updateCurrentBudget')).toHaveLength(1);
+    expect(guardsOn('getBudgetHistory')).toHaveLength(1);
+    expect(guardsOn('getMoneyBuckets')).toHaveLength(1);
+    expect(guardsOn('allocateMoneyBucket')).toHaveLength(1);
+    expect(guardsOn('getStrategyContext')).toHaveLength(1);
+    expect(guardsOn('ticker')).toHaveLength(0);
 
     const api = {
       getBtcMyrMarketPrice: jest.fn(async () => ({
@@ -43,7 +60,10 @@ describe('LunoController', () => {
       { getHealth: jest.fn() } as unknown as LunoHealthService,
       { runSync: jest.fn() } as unknown as LunoSyncService,
       api as unknown as LunoApiService,
-      { rebuildBtcAccounting: jest.fn() } as never,
+      {
+        rebuildBtcAccounting: jest.fn(),
+      } as unknown as LunoBtcAccountingService,
+      {} as unknown as LunoBtcBudgetService,
     );
     await expect(controller.ticker()).resolves.toEqual({
       pair: 'XBTMYR',
