@@ -22,21 +22,22 @@ describe('Luno read-only surface', () => {
     );
   });
 
-  it('does not add strategy recommendations or Luno write endpoints', () => {
+  it('does not add Luno write endpoints or sell/harvest', () => {
     const src = [
       'luno-api.service.ts',
       'luno-sync.service.ts',
       'luno-btc-accounting.service.ts',
       'luno-btc-budget.service.ts',
+      'luno-btc-decision.service.ts',
       'accounting/luno-btc-fifo.ts',
       'accounting/luno-btc-formulas.ts',
+      'accounting/luno-btc-decision.ts',
       'luno.controller.ts',
     ]
       .map((file) => readFileSync(join(__dirname, file), 'utf8'))
       .join('\n');
     expect(src).not.toMatch(/\bHARVEST\b/);
-    expect(src).not.toMatch(/\bWAIT\b/);
-    expect(src).not.toMatch(/\bBUY SMALL\b/);
+    expect(src).not.toMatch(/\bTAKE SOME PROFIT\b/);
     expect(src).not.toContain('/api/1/marketorder');
     expect(src).not.toContain('/api/1/postorder');
     expect(src).not.toContain('/api/1/send');

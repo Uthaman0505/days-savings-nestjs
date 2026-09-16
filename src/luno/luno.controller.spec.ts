@@ -4,6 +4,7 @@ import { LunoApiService } from './luno-api.service';
 import { LunoSyncService } from './luno-sync.service';
 import { LunoBtcAccountingService } from './luno-btc-accounting.service';
 import { LunoBtcBudgetService } from './luno-btc-budget.service';
+import { LunoBtcDecisionService } from './luno-btc-decision.service';
 
 function guardsOn(
   methodName:
@@ -19,7 +20,10 @@ function guardsOn(
     | 'getBudgetHistory'
     | 'getMoneyBuckets'
     | 'allocateMoneyBucket'
-    | 'getStrategyContext',
+    | 'getStrategyContext'
+    | 'getCurrentDecision'
+    | 'getDecisionHistory'
+    | 'recalculateDecision',
 ): unknown[] {
   const proto = LunoController.prototype as unknown as Record<
     string,
@@ -45,6 +49,9 @@ describe('LunoController', () => {
     expect(guardsOn('getMoneyBuckets')).toHaveLength(1);
     expect(guardsOn('allocateMoneyBucket')).toHaveLength(1);
     expect(guardsOn('getStrategyContext')).toHaveLength(1);
+    expect(guardsOn('getCurrentDecision')).toHaveLength(1);
+    expect(guardsOn('getDecisionHistory')).toHaveLength(1);
+    expect(guardsOn('recalculateDecision')).toHaveLength(1);
     expect(guardsOn('ticker')).toHaveLength(0);
 
     const api = {
@@ -64,6 +71,7 @@ describe('LunoController', () => {
         rebuildBtcAccounting: jest.fn(),
       } as unknown as LunoBtcAccountingService,
       {} as unknown as LunoBtcBudgetService,
+      {} as unknown as LunoBtcDecisionService,
     );
     await expect(controller.ticker()).resolves.toEqual({
       pair: 'XBTMYR',
