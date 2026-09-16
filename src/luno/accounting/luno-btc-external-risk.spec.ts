@@ -468,18 +468,61 @@ describe('luno-btc-external-risk', () => {
     expect(classified.raw).toBeDefined();
   });
 
-  it('does not turn geopolitical headlines into partisan wording', () => {
+  it('does not treat ordinary elections as geopolitical risk', () => {
     const classified = classifyNews(
       news({
         headline:
           'An election-related policy announcement created market uncertainty',
-        summary:
-          'A new digital-asset regulation was announced after the election.',
+        summary: 'Campaign commentary about digital assets after the vote.',
       }),
     );
-    expect(classified.category).toBe('GEOPOLITICAL');
+    expect(classified.category).not.toBe('GEOPOLITICAL');
     const joined = `${classified.headline} ${classified.summary}`;
     expect(joined).not.toMatch(/bad for crypto/i);
     expect(joined).not.toMatch(/good for bitcoin/i);
+  });
+
+  it('classifies news by keyword weight and category precedence', () => {
+    const categoryOf = (headline: string, summary?: string) =>
+      classifyNews(news({ headline, summary: summary ?? null })).category;
+
+    expect(
+      categoryOf(
+        'Bernstein expects aggressive rulemaking from SEC, CFTC following CLARITY Act failure',
+      ),
+    ).toBe('REGULATION');
+    expect(
+      categoryOf(
+        'Ethereum trades near the key $2,360 support ahead of the FOMC decision. What to watch next?',
+      ),
+    ).toBe('MACRO');
+    expect(categoryOf('Bitcoin falls after hotter-than-expected CPI')).toBe(
+      'MACRO',
+    );
+    expect(categoryOf('SEC approves Bitcoin ETF')).toBe('REGULATION');
+    expect(categoryOf('Bitcoin ETF records large institutional inflows')).toBe(
+      'INSTITUTIONAL',
+    );
+    expect(categoryOf('Major crypto exchange suffers security breach')).toBe(
+      'CRYPTO',
+    );
+    expect(categoryOf('Bank collapse triggers liquidity concerns')).toBe(
+      'BANKING',
+    );
+    expect(
+      categoryOf('Escalating military conflict shakes global markets'),
+    ).toBe('GEOPOLITICAL');
+    expect(categoryOf('Bitcoin price rises 2%')).toBe('CRYPTO');
+    expect(
+      categoryOf('Retail chain reports stronger store traffic this quarter'),
+    ).toBe('NONE');
+    expect(categoryOf('SEC signals stricter crypto enforcement')).toBe(
+      'REGULATION',
+    );
+    expect(
+      categoryOf(
+        'A new digital-asset regulation was announced after the election',
+      ),
+    ).toBe('REGULATION');
   });
 });
