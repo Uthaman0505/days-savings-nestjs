@@ -120,7 +120,8 @@ export class LunoBtcAccountingService {
           btcReceived: roundBtc(row.btcQuantity),
           feeMyr: roundMyr(row.feeMyrReported),
           effectiveBuyPriceMyr: roundMyr(effectiveBuyPriceMyr(row)),
-        })),
+        }))
+        .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)),
       disposals: details.fifo.disposals.map((row) => ({
         disposedAt: row.disposedAt.toISOString(),
         displayDate: formatDisplayDate(row.disposedAt),
