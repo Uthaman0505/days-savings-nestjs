@@ -26,6 +26,7 @@ import { LunoSyncService } from './luno-sync.service';
 import { LunoBtcAccountingService } from './luno-btc-accounting.service';
 import { LunoBtcBudgetService } from './luno-btc-budget.service';
 import { LunoBtcDecisionService } from './luno-btc-decision.service';
+import { LunoBtcMarketService } from './luno-btc-market.service';
 
 type AuthedRequest = Request & { user?: JwtUser };
 
@@ -45,6 +46,7 @@ export class LunoController {
     private readonly accounting: LunoBtcAccountingService,
     private readonly budget: LunoBtcBudgetService,
     private readonly decision: LunoBtcDecisionService,
+    private readonly market: LunoBtcMarketService,
   ) {}
 
   @Get('ticker')
@@ -78,6 +80,12 @@ export class LunoController {
       await this.decision.recalculateAllForCurrentMonth();
     } catch {
       // Decision refresh is advisory and must not fail a Luno sync.
+    }
+    try {
+      await this.market.syncBtcMarketData();
+      await this.market.calculateBtcMarketSnapshot();
+    } catch {
+      // Market intelligence is advisory and must not fail a Luno sync.
     }
     return result;
   }
@@ -169,5 +177,29 @@ export class LunoController {
   @UseGuards(AuthGuard('jwt'))
   recalculateDecision(@Req() req: AuthedRequest) {
     return this.decision.recalculateCurrentBtcDecision(requireUserId(req));
+  }
+
+  @Get('btc/market-context')
+  @UseGuards(AuthGuard('jwt'))
+  getMarketContext(@Req() req: AuthedRequest) {
+    return this.market.getMarketContext(requireUserId(req));
+  }
+
+  @Get('btc/decision/final')
+  @UseGuards(AuthGuard('jwt'))
+  getFinalDecision(@Req() req: AuthedRequest) {
+    return this.market.getFinalDecision(requireUserId(req));
+  }
+
+  @Post('btc/market-context/recalculate')
+  @UseGuards(AuthGuard('jwt'))
+  recalculateMarketContext() {
+    return this.market.calculateBtcMarketSnapshot();
+  }
+
+  @Post('btc/market-data/sync')
+  @UseGuards(AuthGuard('jwt'))
+  syncMarketData() {
+    return this.market.syncBtcMarketData();
   }
 }

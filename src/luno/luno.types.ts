@@ -148,3 +148,18 @@ export type LunoSyncResult = {
   transfersUpserted: number;
   errors: string[];
 };
+
+export type LunoCandle = {
+  timestamp: number;
+  open: string;
+  high: string;
+  low: string;
+  close: string;
+  volume: string;
+};
+
+export type LunoCandlesResponse = {
+  pair?: string;
+  duration?: number;
+  candles: LunoCandle[];
+};

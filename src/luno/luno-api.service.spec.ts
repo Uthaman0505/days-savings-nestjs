@@ -71,6 +71,43 @@ describe('LunoApiService', () => {
     expect(String(ticker.last_trade)).not.toMatch(/e/i);
   });
 
+  it('parses official Luno candles without inventing fields', () => {
+    const api = makeApi(jest.fn());
+    const rows = api.parseCandles({
+      pair: 'XBTMYR',
+      duration: 3600,
+      candles: [
+        {
+          timestamp: 1750000000000,
+          open: '310000.00',
+          high: '312000.00',
+          low: '308000.00',
+          close: '311000.50',
+          volume: '1.25',
+        },
+      ],
+    });
+    expect(rows[0].close).toBe('311000.50');
+    expect(String(rows[0].close)).not.toMatch(/e/i);
+  });
+
+  it('requests Luno candles with authentication', async () => {
+    const fetchImpl = jest.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toContain('/api/exchange/1/candles');
+      expect(init?.method).toBe('GET');
+      expect((init?.headers as Record<string, string>).Authorization).toMatch(
+        /^Basic /,
+      );
+      return jsonResponse({
+        pair: 'XBTMYR',
+        duration: 3600,
+        candles: [],
+      });
+    });
+    await makeApi(fetchImpl).getXbtMyrCandles(3600, 1);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it('parses balances using Luno field names', () => {
     const api = makeApi(jest.fn());
     const rows = api.parseBalances({

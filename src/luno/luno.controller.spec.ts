@@ -5,6 +5,7 @@ import { LunoSyncService } from './luno-sync.service';
 import { LunoBtcAccountingService } from './luno-btc-accounting.service';
 import { LunoBtcBudgetService } from './luno-btc-budget.service';
 import { LunoBtcDecisionService } from './luno-btc-decision.service';
+import { LunoBtcMarketService } from './luno-btc-market.service';
 
 function guardsOn(
   methodName:
@@ -23,7 +24,11 @@ function guardsOn(
     | 'getStrategyContext'
     | 'getCurrentDecision'
     | 'getDecisionHistory'
-    | 'recalculateDecision',
+    | 'recalculateDecision'
+    | 'getMarketContext'
+    | 'getFinalDecision'
+    | 'recalculateMarketContext'
+    | 'syncMarketData',
 ): unknown[] {
   const proto = LunoController.prototype as unknown as Record<
     string,
@@ -52,6 +57,10 @@ describe('LunoController', () => {
     expect(guardsOn('getCurrentDecision')).toHaveLength(1);
     expect(guardsOn('getDecisionHistory')).toHaveLength(1);
     expect(guardsOn('recalculateDecision')).toHaveLength(1);
+    expect(guardsOn('getMarketContext')).toHaveLength(1);
+    expect(guardsOn('getFinalDecision')).toHaveLength(1);
+    expect(guardsOn('recalculateMarketContext')).toHaveLength(1);
+    expect(guardsOn('syncMarketData')).toHaveLength(1);
     expect(guardsOn('ticker')).toHaveLength(0);
 
     const api = {
@@ -72,6 +81,7 @@ describe('LunoController', () => {
       } as unknown as LunoBtcAccountingService,
       {} as unknown as LunoBtcBudgetService,
       {} as unknown as LunoBtcDecisionService,
+      {} as unknown as LunoBtcMarketService,
     );
     await expect(controller.ticker()).resolves.toEqual({
       pair: 'XBTMYR',

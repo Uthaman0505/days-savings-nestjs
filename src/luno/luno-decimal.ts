@@ -176,3 +176,30 @@ export function roundDecimal(value: string, places: number): string {
   const rounded = divideDecimalStrings(value, '1', places);
   return rounded ?? '0';
 }
+
+/** Integer square root of a non-negative decimal. Null if negative. */
+export function sqrtDecimal(value: string, scale = 8): string | null {
+  const canonical = asDecimalString(value);
+  if (compareDecimal(canonical, '0') < 0) {
+    return null;
+  }
+  if (isZeroDecimal(canonical)) {
+    return '0';
+  }
+  const parts = splitSigned(canonical);
+  const scaled = toScaled(parts, scale * 2);
+  return fromScaled(integerSqrt(scaled), scale);
+}
+
+function integerSqrt(value: bigint): bigint {
+  if (value < 2n) {
+    return value;
+  }
+  let x0 = value;
+  let x1 = (value >> 1n) + 1n;
+  while (x1 < x0) {
+    x0 = x1;
+    x1 = (x1 + value / x1) >> 1n;
+  }
+  return x0;
+}

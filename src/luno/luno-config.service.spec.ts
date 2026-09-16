@@ -56,6 +56,11 @@ describe('isAllowedLunoGetPath', () => {
     expect(isAllowedLunoGetPath(`${LUNO_GET_PATHS.ticker}?pair=XBTMYR`)).toBe(
       true,
     );
+    expect(
+      isAllowedLunoGetPath(
+        `${LUNO_GET_PATHS.candles}?pair=XBTMYR&since=1&duration=3600`,
+      ),
+    ).toBe(true);
     expect(isAllowedLunoGetPath(LUNO_GET_PATHS.balances)).toBe(true);
     expect(isAllowedLunoGetPath(LUNO_GET_PATHS.orders)).toBe(true);
     expect(isAllowedLunoGetPath(`${LUNO_GET_PATHS.trades}?pair=XBTMYR`)).toBe(

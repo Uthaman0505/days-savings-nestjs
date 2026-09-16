@@ -70,6 +70,8 @@ import { LunoBtcAccountingSnapshot } from '../luno/entities/luno-btc-snapshot.en
 import { LunoBtcMonthlyBudget } from '../luno/entities/luno-btc-monthly-budget.entity';
 import { LunoBtcMoneyBucket } from '../luno/entities/luno-btc-money-bucket.entity';
 import { LunoBtcStrategyEvent } from '../luno/entities/luno-btc-strategy-event.entity';
+import { LunoBtcMarketCandle } from '../luno/entities/luno-btc-market-candle.entity';
+import { LunoBtcMarketSnapshot } from '../luno/entities/luno-btc-market-snapshot.entity';
 
 export const entities = [
   User,
@@ -137,4 +139,6 @@ export const entities = [
   LunoBtcMonthlyBudget,
   LunoBtcMoneyBucket,
   LunoBtcStrategyEvent,
+  LunoBtcMarketCandle,
+  LunoBtcMarketSnapshot,
 ];

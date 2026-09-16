@@ -18,6 +18,7 @@ describe('Luno read-only surface', () => {
         '/api/1/listtrades',
         '/api/1/withdrawals',
         '/api/exchange/1/transfers',
+        '/api/exchange/1/candles',
       ]),
     );
   });
@@ -32,6 +33,8 @@ describe('Luno read-only surface', () => {
       'accounting/luno-btc-fifo.ts',
       'accounting/luno-btc-formulas.ts',
       'accounting/luno-btc-decision.ts',
+      'accounting/luno-btc-market.ts',
+      'luno-btc-market.service.ts',
       'luno.controller.ts',
     ]
       .map((file) => readFileSync(join(__dirname, file), 'utf8'))

@@ -23,7 +23,10 @@ import { LunoBtcAccountingSnapshot } from './entities/luno-btc-snapshot.entity';
 import { LunoBtcMonthlyBudget } from './entities/luno-btc-monthly-budget.entity';
 import { LunoBtcMoneyBucket } from './entities/luno-btc-money-bucket.entity';
 import { LunoBtcStrategyEvent } from './entities/luno-btc-strategy-event.entity';
+import { LunoBtcMarketCandle } from './entities/luno-btc-market-candle.entity';
+import { LunoBtcMarketSnapshot } from './entities/luno-btc-market-snapshot.entity';
 import { LunoBtcDecisionService } from './luno-btc-decision.service';
+import { LunoBtcMarketService } from './luno-btc-market.service';
 
 export const LUNO_ENTITIES = [
   LunoSyncRun,
@@ -41,6 +44,8 @@ export const LUNO_ENTITIES = [
   LunoBtcMonthlyBudget,
   LunoBtcMoneyBucket,
   LunoBtcStrategyEvent,
+  LunoBtcMarketCandle,
+  LunoBtcMarketSnapshot,
 ];
 
 @Module({
@@ -57,6 +62,7 @@ export const LUNO_ENTITIES = [
     LunoBtcAccountingService,
     LunoBtcBudgetService,
     LunoBtcDecisionService,
+    LunoBtcMarketService,
   ],
   exports: [
     LunoApiService,
@@ -65,6 +71,7 @@ export const LUNO_ENTITIES = [
     LunoBtcAccountingService,
     LunoBtcBudgetService,
     LunoBtcDecisionService,
+    LunoBtcMarketService,
   ],
 })
 export class LunoModule {}

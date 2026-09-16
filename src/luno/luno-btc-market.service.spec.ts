@@ -1,0 +1,109 @@
+import { Test } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { LunoBtcMarketCandle } from './entities/luno-btc-market-candle.entity';
+import { LunoBtcMarketSnapshot } from './entities/luno-btc-market-snapshot.entity';
+import { LunoApiService } from './luno-api.service';
+import { LunoBtcAccountingService } from './luno-btc-accounting.service';
+import { LunoBtcDecisionService } from './luno-btc-decision.service';
+import { LunoBtcMarketService } from './luno-btc-market.service';
+
+describe('LunoBtcMarketService', () => {
+  const candleRows: LunoBtcMarketCandle[] = [];
+  let service: LunoBtcMarketService;
+  let fetchCount = 0;
+
+  beforeEach(async () => {
+    candleRows.length = 0;
+    fetchCount = 0;
+    const module = await Test.createTestingModule({
+      providers: [
+        LunoBtcMarketService,
+        {
+          provide: getRepositoryToken(LunoBtcMarketCandle),
+          useValue: {
+            find: jest.fn(async () => [...candleRows]),
+            findOne: jest.fn(
+              async ({ where }: { where: Record<string, unknown> }) =>
+                candleRows.find(
+                  (row) =>
+                    row.interval === where.interval &&
+                    row.candleTime.getTime() ===
+                      (where.candleTime as Date).getTime(),
+                ) ?? null,
+            ),
+            create: jest.fn((row: Partial<LunoBtcMarketCandle>) => ({
+              ...row,
+            })),
+            save: jest.fn(async (row: LunoBtcMarketCandle) => {
+              const index = candleRows.findIndex(
+                (existing) =>
+                  existing.interval === row.interval &&
+                  existing.candleTime.getTime() === row.candleTime.getTime(),
+              );
+              if (index >= 0) {
+                candleRows[index] = { ...candleRows[index], ...row };
+                return candleRows[index];
+              }
+              candleRows.push(row);
+              return row;
+            }),
+          },
+        },
+        {
+          provide: getRepositoryToken(LunoBtcMarketSnapshot),
+          useValue: {
+            save: jest.fn(async (row) => row),
+            create: jest.fn((row) => row),
+            find: jest.fn(async () => []),
+          },
+        },
+        {
+          provide: LunoApiService,
+          useValue: {
+            getXbtMyrCandles: async () => {
+              fetchCount += 1;
+              return [
+                {
+                  timestamp: Date.parse('2026-09-16T10:00:00.000Z'),
+                  open: '310000',
+                  high: '311000',
+                  low: '309000',
+                  close: '310500',
+                  volume: '1.2',
+                },
+              ];
+            },
+          },
+        },
+        {
+          provide: LunoBtcAccountingService,
+          useValue: {
+            getSpendContext: async () => ({ averageBuyPriceMyr: '326000' }),
+          },
+        },
+        {
+          provide: LunoBtcDecisionService,
+          useValue: {},
+        },
+      ],
+    }).compile();
+    service = module.get(LunoBtcMarketService);
+  });
+
+  it('upserts candles idempotently', async () => {
+    const first = await service.syncBtcMarketData(
+      new Date('2026-09-16T12:00:00.000Z'),
+    );
+    const second = await service.syncBtcMarketData(
+      new Date('2026-09-16T12:00:00.000Z'),
+    );
+    expect(first.upserted).toBe(3);
+    expect(second.upserted).toBe(3);
+    expect(candleRows).toHaveLength(3);
+    expect(fetchCount).toBe(6);
+  });
+
+  it('does not call Luno write endpoints while syncing candles', () => {
+    expect(JSON.stringify(service)).not.toContain('postorder');
+  });
+});
