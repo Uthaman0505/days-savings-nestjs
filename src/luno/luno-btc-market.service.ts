@@ -48,7 +48,15 @@ const INTERVALS: {
   },
 ];
 
-export type LunoBtcMarketContextView = MarketSnapshotView & {
+export type LunoBtcMarketContextView = Omit<
+  MarketSnapshotView,
+  'direction' | 'buyingCondition' | 'stability' | 'confidence'
+> & {
+  hasSnapshot: boolean;
+  direction: MarketSnapshotView['direction'] | null;
+  buyingCondition: MarketSnapshotView['buyingCondition'] | null;
+  stability: MarketSnapshotView['stability'] | null;
+  confidence: MarketSnapshotView['confidence'] | null;
   marketDataSource: typeof MARKET_DATA_SOURCE;
   reasons: string[];
   calculatedAt: string;
@@ -205,12 +213,13 @@ export class LunoBtcMarketService {
   toMarketContextView(
     snapshot: MarketSnapshotView | null,
     calculatedAt = new Date(),
-  ): LunoBtcMarketContextView | null {
-    if (!snapshot) {
-      return null;
+  ): LunoBtcMarketContextView {
+    if (!hasMarketReadings(snapshot)) {
+      return emptyMarketContextView(calculatedAt);
     }
     return {
       ...snapshot,
+      hasSnapshot: true,
       currentPriceMyr: roundMyr(snapshot.currentPriceMyr),
       shortTrendPct: roundMyr(snapshot.shortTrendPct),
       mediumTrendPct: roundMyr(snapshot.mediumTrendPct),
@@ -231,9 +240,7 @@ export class LunoBtcMarketService {
     };
   }
 
-  async getMarketContext(
-    _userId: string,
-  ): Promise<LunoBtcMarketContextView | null> {
+  async getMarketContext(_userId: string): Promise<LunoBtcMarketContextView> {
     const spend = await this.accounting.getSpendContext();
     const snapshot = await this.getLatestBtcMarketSnapshot(
       spend.averageBuyPriceMyr,
@@ -353,5 +360,53 @@ function fromRow(
     latestCandleAt: row.latestCandleAt,
     marketDataAgeMinutes: ageMinutes,
     marketContextStatus: status,
+  };
+}
+
+function hasMarketReadings(
+  snapshot: MarketSnapshotView | null,
+): snapshot is MarketSnapshotView {
+  if (!snapshot) {
+    return false;
+  }
+  return Boolean(
+    snapshot.currentPriceMyr ||
+    snapshot.sma20Myr ||
+    snapshot.sma50Myr ||
+    snapshot.recentHighMyr ||
+    snapshot.recentLowMyr ||
+    snapshot.latestCandleAt,
+  );
+}
+
+function emptyMarketContextView(calculatedAt: Date): LunoBtcMarketContextView {
+  const at = calculatedAt.toISOString();
+  return {
+    hasSnapshot: false,
+    direction: null,
+    buyingCondition: null,
+    stability: null,
+    confidence: null,
+    currentPriceMyr: null,
+    shortTrendPct: null,
+    mediumTrendPct: null,
+    drawdownFromRecentHighPct: null,
+    volatilityPct: null,
+    momentumValue: null,
+    sma20Myr: null,
+    sma50Myr: null,
+    recentHighMyr: null,
+    recentLowMyr: null,
+    marketScore: null,
+    reason: [],
+    source: MARKET_DATA_SOURCE,
+    latestCandleAt: null,
+    marketDataAgeMinutes: null,
+    marketContextStatus: 'UNAVAILABLE',
+    marketDataSource: MARKET_DATA_SOURCE,
+    reasons: [],
+    calculatedAt: at,
+    snapshotCalculatedAt: at,
+    latestMarketCandleAt: null,
   };
 }

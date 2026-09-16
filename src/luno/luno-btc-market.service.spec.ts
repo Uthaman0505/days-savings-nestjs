@@ -106,4 +106,40 @@ describe('LunoBtcMarketService', () => {
   it('does not call Luno write endpoints while syncing candles', () => {
     expect(JSON.stringify(service)).not.toContain('postorder');
   });
+
+  it('sets hasSnapshot false when no market snapshot exists', () => {
+    const view = service.toMarketContextView(null);
+    expect(view.hasSnapshot).toBe(false);
+    expect(view.marketContextStatus).toBe('UNAVAILABLE');
+    expect(view.direction).toBeNull();
+  });
+
+  it('keeps hasSnapshot true for a too-old snapshot without changing freshness math', () => {
+    const view = service.toMarketContextView({
+      direction: 'FALLING',
+      buyingCondition: 'NORMAL',
+      stability: 'NORMAL',
+      confidence: 'LOW',
+      currentPriceMyr: '310464',
+      shortTrendPct: '-1',
+      mediumTrendPct: '-2',
+      drawdownFromRecentHighPct: '-4',
+      volatilityPct: '1.2',
+      momentumValue: '-1',
+      sma20Myr: '318000',
+      sma50Myr: '320000',
+      recentHighMyr: '330000',
+      recentLowMyr: '310000',
+      marketScore: '40',
+      reason: ['BTC is below its short-term average.'],
+      source: 'LUNO',
+      latestCandleAt: new Date('2026-09-14T12:00:00.000Z'),
+      marketDataAgeMinutes: '2880',
+      marketContextStatus: 'UNAVAILABLE',
+    });
+    expect(view.hasSnapshot).toBe(true);
+    expect(view.marketContextStatus).toBe('UNAVAILABLE');
+    expect(view.direction).toBe('FALLING');
+    expect(view.sma20Myr).toBeTruthy();
+  });
 });
