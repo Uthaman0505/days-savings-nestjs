@@ -92,6 +92,7 @@ function classifyGroup(
   const warnings: string[] = [];
   let malformed = false;
   let transferLike = false;
+  const otherAssets = new Set<string>();
 
   for (const row of rows) {
     let delta: string;
@@ -128,10 +129,8 @@ function classifyGroup(
       xbtDelta = addDecimalStrings(xbtDelta, delta);
     } else if (onMyr) {
       myrDelta = addDecimalStrings(myrDelta, delta);
-    } else {
-      warnings.push(
-        `Untracked asset ${code || 'unknown'} on row ${row.rowIndex}.`,
-      );
+    } else if (code && code !== 'XBT' && code !== 'BTC' && code !== 'MYR') {
+      otherAssets.add(code);
     }
   }
 
@@ -156,6 +155,14 @@ function classifyGroup(
   const xbtOut = compareDecimal(xbtDelta, '0') < 0;
   const myrIn = compareDecimal(myrDelta, '0') > 0;
   const myrOut = compareDecimal(myrDelta, '0') < 0;
+
+  if (otherAssets.size > 0 && isZeroDecimal(xbtDelta) && !malformed) {
+    return [...otherAssets]
+      .sort()
+      .map((asset) =>
+        excludedAssetEvent(occurredAt, reference, sourceTransactionIds, asset),
+      );
+  }
 
   if (xbtIn && myrOut) {
     return [
@@ -441,6 +448,7 @@ function tradeEvent(
     derivationNote: fee.derivationNote,
     warning: [...warnings, fee.warningExtra].filter(Boolean).join(' ') || null,
     btcDirection: classification === 'BTC_BUY' ? 'IN' : 'OUT',
+    excludedAsset: null,
   };
 }
 
@@ -464,6 +472,7 @@ function movement(
     myrAmount,
     ...defaultTradeFee(),
     warning,
+    excludedAsset: null,
   };
 }
 
@@ -500,5 +509,26 @@ function unknownEvent(
     ...defaultTradeFee(),
     feeStatus: 'UNKNOWN',
     warning,
+    excludedAsset: null,
+  };
+}
+
+function excludedAssetEvent(
+  occurredAt: Date,
+  reference: string | null,
+  sourceTransactionIds: string[],
+  asset: string,
+): ClassifiedEvent {
+  return {
+    classification: 'EXCLUDED_ASSET',
+    occurredAt,
+    reference,
+    sourceTransactionIds,
+    btcQuantity: '0',
+    btcDirection: 'NONE',
+    myrAmount: '0',
+    ...defaultTradeFee(),
+    warning: null,
+    excludedAsset: asset,
   };
 }

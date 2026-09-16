@@ -8,7 +8,11 @@ import {
   attachOrderFees,
   classifyLunoTransactions,
 } from './accounting/luno-btc-classify';
-import { buildFeeAudit } from './accounting/luno-btc-fees';
+import {
+  effectiveBuyPriceMyr,
+  formatDisplayDate,
+} from './accounting/luno-btc-activity';
+import { buildFeeAudit, cashAppliedFee } from './accounting/luno-btc-fees';
 import { runFifo, type FifoResult } from './accounting/luno-btc-fifo';
 import {
   buildPortfolioView,
@@ -87,41 +91,81 @@ export class LunoBtcAccountingService {
           'sum of effective MYR cost of BTC buys (price + buy fee)',
         principalRecovered: 'sum of FIFO cost basis consumed by BTC sales only',
         principalRecoveryPct:
-          'min(100, principalRecovered / lifetimeExternalContribution × 100) for display; raw ratio kept separately',
-        lifetimeExternalContribution:
-          'MYR deposits allocated to BTC buys first; unexplained buys count as external; sale-funded buys are reinvestment',
+          'min(100, principalRecovered / moneyPutInMyr × 100) for display; raw ratio kept separately',
+        remainingUnrecoveredPrincipal:
+          'max(moneyPutInMyr − principalRecovered, 0)',
+        lifetimeContribution:
+          'same as moneyPutInMyr: lifetime MYR spent on BTC buys. Deposit-vs-reinvestment split is audit-only and is not the recovery denominator.',
       },
       openLots: details.fifo.lots
         .filter((lot) => compareDecimal(lot.btcQuantityRemaining, '0') > 0)
         .map((lot) => ({
           acquiredAt: lot.acquiredAt.toISOString(),
+          displayDate: formatDisplayDate(lot.acquiredAt),
           reference: lot.reference,
           origin: lot.origin,
-          btcQuantityOriginal: lot.btcQuantityOriginal,
-          btcQuantityRemaining: lot.btcQuantityRemaining,
-          effectiveCostMyr: lot.effectiveCostMyr,
-          remainingCostMyr: lot.myrCostRemaining,
-          feeMyr: lot.feeMyr,
+          btcQuantityRemaining: roundBtc(lot.btcQuantityRemaining),
+          remainingCostMyr: roundMyr(lot.myrCostRemaining),
+          feeMyr: roundMyr(lot.feeMyr),
+        })),
+      purchases: details.classifiedEvents
+        .filter((row) => row.classification === 'BTC_BUY')
+        .map((row) => ({
+          occurredAt: row.occurredAt.toISOString(),
+          displayDate: formatDisplayDate(row.occurredAt),
+          reference: row.reference,
+          moneyUsedMyr: roundMyr(
+            addDecimalStrings(row.myrAmount, cashAppliedFee(row)),
+          ),
+          btcReceived: roundBtc(row.btcQuantity),
+          feeMyr: roundMyr(row.feeMyrReported),
+          effectiveBuyPriceMyr: roundMyr(effectiveBuyPriceMyr(row)),
         })),
       disposals: details.fifo.disposals.map((row) => ({
         disposedAt: row.disposedAt.toISOString(),
+        displayDate: formatDisplayDate(row.disposedAt),
         kind: row.kind,
         reference: row.reference,
-        btcQuantity: row.btcQuantity,
-        grossProceedsMyr: row.grossProceedsMyr,
-        feeMyr: row.feeMyr,
-        netProceedsMyr: row.netProceedsMyr,
-        costBasisMyr: row.costBasisMyr,
-        realisedPnlMyr: row.realisedPnlMyr,
-        explanation:
-          row.kind === 'SELL'
-            ? `Sale proceeds ${row.netProceedsMyr} − cost of BTC sold ${row.costBasisMyr} = realised ${row.realisedPnlMyr}`
-            : 'BTC left the account without a sale; no trading profit.',
-        lotsUsed: row.lotsUsed,
+        btcQuantity: roundBtc(row.btcQuantity),
+        moneyReceivedMyr: roundMyr(row.grossProceedsMyr),
+        costOfBtcSoldMyr: roundMyr(row.costBasisMyr),
+        profitMyr: roundMyr(row.realisedPnlMyr),
+        feeMyr: roundMyr(row.feeMyr),
+        batchesUsed: row.lotsUsed.length,
       })),
       classifiedEvents: details.classifiedEvents,
-      feeAudit: buildFeeAudit(details.classifiedEvents),
-      warnings: details.portfolio.warnings,
+      feeAudit: buildFeeAudit(details.classifiedEvents).map((row) => ({
+        ...row,
+        occurredAt: row.occurredAt,
+        displayDate: formatDisplayDate(new Date(row.occurredAt)),
+        btcQuantity: roundBtc(row.btcQuantity),
+        grossMyr: roundMyr(row.grossMyr),
+        feeMyr: roundMyr(row.feeMyr),
+      })),
+      excludedAssets: details.portfolio.excludedAssets,
+      currentMonth: {
+        month: details.portfolio.currentMonth.month,
+        purchaseTotalMyr: roundMyr(
+          details.portfolio.currentMonth.purchaseTotalMyr,
+        ),
+        buyCount: details.portfolio.currentMonth.buyCount,
+        btcReceived: roundBtc(details.portfolio.currentMonth.btcReceived),
+        latestBuyAt: details.portfolio.currentMonth.latestBuyAt,
+        latestBuyDisplay: details.portfolio.currentMonth.latestBuyAt
+          ? formatDisplayDate(
+              new Date(details.portfolio.currentMonth.latestBuyAt),
+            )
+          : null,
+      },
+      warnings: details.portfolio.warnings.filter(
+        (row) => !/untracked asset/i.test(row),
+      ),
+      technical: {
+        openLots: details.fifo.lots.filter(
+          (lot) => compareDecimal(lot.btcQuantityRemaining, '0') > 0,
+        ),
+        disposals: details.fifo.disposals,
+      },
     };
   }
 
@@ -142,6 +186,9 @@ export class LunoBtcAccountingService {
       principalRecoveredMyr: roundMyr(view.principalRecoveredMyr),
       principalRecoveryPct: roundMyr(view.principalRecoveryPct),
       principalRecoveryPctRaw: view.principalRecoveryPctRaw,
+      remainingUnrecoveredPrincipalMyr: roundMyr(
+        view.remainingUnrecoveredPrincipalMyr,
+      ),
       overallReturnPct: roundMyr(view.overallReturnPct),
       totalBtcBought: roundBtc(view.totalBtcBought),
       totalBtcSold: roundBtc(view.totalBtcSold),
@@ -157,11 +204,19 @@ export class LunoBtcAccountingService {
       externalContributionMyr: roundMyr(view.externalContributionMyr),
       reinvestedMyr: roundMyr(view.reinvestedMyr),
       externalContributionConfidence: view.externalContributionConfidence,
+      currentMonth: {
+        month: view.currentMonth.month,
+        purchaseTotalMyr: roundMyr(view.currentMonth.purchaseTotalMyr),
+        buyCount: view.currentMonth.buyCount,
+        btcReceived: roundBtc(view.currentMonth.btcReceived),
+        latestBuyAt: view.currentMonth.latestBuyAt,
+      },
+      excludedAssets: view.excludedAssets,
       reconciliation: {
         status: view.reconciliation.status,
         differenceBtc: view.reconciliation.differenceBtc,
       },
-      warnings: view.warnings,
+      warnings: view.warnings.filter((row) => !/untracked asset/i.test(row)),
     };
   }
 

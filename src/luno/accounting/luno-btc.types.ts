@@ -10,6 +10,7 @@ export type BtcAccountingKind =
   | 'MYR_DEPOSIT'
   | 'MYR_WITHDRAWAL'
   | 'INTERNAL_TRANSFER'
+  | 'EXCLUDED_ASSET'
   | 'UNKNOWN';
 
 export type FeeStatus = 'KNOWN' | 'PARTIAL' | 'UNKNOWN' | 'NONE';
@@ -71,6 +72,7 @@ export type ClassifiedEvent = {
   tradeChannel: TradeChannel;
   derivationNote: string | null;
   warning: string | null;
+  excludedAsset: string | null;
 };
 
 export type FifoLot = {
@@ -155,6 +157,7 @@ export type BtcPortfolioView = {
   principalRecoveredMyr: string;
   principalRecoveryPct: string | null;
   principalRecoveryPctRaw: string | null;
+  remainingUnrecoveredPrincipalMyr: string;
   overallReturnPct: string | null;
   totalBtcBought: string;
   totalBtcSold: string;
@@ -165,6 +168,8 @@ export type BtcPortfolioView = {
   externalContributionMyr: string;
   reinvestedMyr: string;
   externalContributionConfidence: ContributionConfidence;
+  currentMonth: CurrentMonthBuys;
+  excludedAssets: ExcludedAsset[];
   reconciliation: {
     status: ReconciliationStatus;
     differenceBtc: string;
@@ -175,3 +180,15 @@ export type BtcPortfolioView = {
 };
 
 export const BTC_DUST_TOLERANCE = '0.00000001';
+
+export type ExcludedAsset = {
+  asset: string;
+};
+
+export type CurrentMonthBuys = {
+  month: string | null;
+  purchaseTotalMyr: string;
+  buyCount: number;
+  btcReceived: string;
+  latestBuyAt: string | null;
+};

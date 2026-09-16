@@ -2,6 +2,7 @@ import {
   asDecimalString,
   addDecimalStrings,
   divideDecimalStrings,
+  maxDecimal,
   multiplyDecimalStrings,
   roundDecimal,
 } from './luno-decimal';
@@ -24,6 +25,7 @@ describe('luno-decimal', () => {
     expect(divideDecimalStrings('125', '0.0005', 2)).toBe('250000');
     expect(divideDecimalStrings('1', '0', 2)).toBeNull();
     expect(roundDecimal('1.595', 2)).toBe('1.6');
+    expect(maxDecimal('0', '52.11')).toBe('52.11');
   });
 
   it('rejects scientific notation and NaN', () => {

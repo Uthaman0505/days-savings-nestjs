@@ -8,6 +8,10 @@ import {
   roundDecimal,
   subtractDecimalStrings,
 } from '../luno-decimal';
+import {
+  collectExcludedAssets,
+  summarizeCurrentMonthBuys,
+} from './luno-btc-activity';
 import { buildFeeAudit, summarizeFeeCoverage } from './luno-btc-fees';
 import type { FifoResult } from './luno-btc-fifo';
 import type { ClassifiedEvent, FifoLot } from './luno-btc.types';
@@ -77,16 +81,17 @@ export function buildPortfolioView(input: {
       ? null
       : addDecimalStrings(input.fifo.realisedPnlMyr, profitStillInsideBtcMyr);
   const moneyPutIn = input.fifo.moneyPutInMyr;
-  const recoveryBase = !isZeroDecimal(input.fifo.externalContributionMyr)
-    ? input.fifo.externalContributionMyr
-    : moneyPutIn;
-  const recoveryRaw = isZeroDecimal(recoveryBase)
+  const recovered = input.fifo.principalRecoveredMyr;
+  const recoveryRaw = isZeroDecimal(moneyPutIn)
     ? null
     : divideDecimalStrings(
-        multiplyDecimalStrings(input.fifo.principalRecoveredMyr, '100'),
-        recoveryBase,
+        multiplyDecimalStrings(recovered, '100'),
+        moneyPutIn,
         8,
       );
+  const unrecovered = subtractDecimalStrings(moneyPutIn, recovered);
+  const remainingUnrecoveredPrincipalMyr =
+    compareDecimal(unrecovered, '0') < 0 ? '0' : unrecovered;
   const overallReturnPct =
     lifetimeProfitMyr == null || isZeroDecimal(moneyPutIn)
       ? null
@@ -110,7 +115,12 @@ export function buildPortfolioView(input: {
     reconciliationStatus = 'MISMATCH';
   }
 
-  const unknownWarnings = input.fifo.warnings;
+  const classifiedEvents = input.classifiedEvents ?? [];
+  const excludedAssets = collectExcludedAssets(classifiedEvents);
+  const currentMonth = summarizeCurrentMonthBuys(classifiedEvents);
+  const unknownWarnings = input.fifo.warnings.filter(
+    (row) => !/untracked asset/i.test(row),
+  );
   const hasZeroCostLot = input.fifo.lots.some(
     (lot) =>
       compareDecimal(lot.btcQuantityRemaining, '0') > 0 && lot.origin !== 'BUY',
@@ -179,6 +189,7 @@ export function buildPortfolioView(input: {
     principalRecoveredMyr: input.fifo.principalRecoveredMyr,
     principalRecoveryPct: capPct(recoveryRaw),
     principalRecoveryPctRaw: recoveryRaw,
+    remainingUnrecoveredPrincipalMyr,
     overallReturnPct,
     totalBtcBought: input.fifo.totalBtcBought,
     totalBtcSold: input.fifo.totalBtcSold,
@@ -189,6 +200,8 @@ export function buildPortfolioView(input: {
     externalContributionMyr: input.fifo.externalContributionMyr,
     reinvestedMyr: input.fifo.reinvestedMyr,
     externalContributionConfidence: contributionConfidence,
+    currentMonth,
+    excludedAssets,
     reconciliation: {
       status: reconciliationStatus,
       differenceBtc,

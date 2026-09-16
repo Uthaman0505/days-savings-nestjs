@@ -338,7 +338,7 @@ describe('Luno BTC FIFO accounting', () => {
     );
   });
 
-  it('does not treat unknown rows as profit and keeps a warning', () => {
+  it('excludes non-BTC assets from FIFO without treating them as profit or errors', () => {
     const events = classifyLunoTransactions(
       [
         tx({
@@ -355,10 +355,22 @@ describe('Luno BTC FIFO accounting', () => {
       BTC,
       MYR,
     );
-    expect(events[0].classification).toBe('UNKNOWN');
+    expect(events[0].classification).toBe('EXCLUDED_ASSET');
+    expect(events[0].excludedAsset).toBe('ETH');
     const fifo = runFifo(events);
     expect(fifo.realisedPnlMyr).toBe('0');
-    expect(fifo.warnings.length).toBeGreaterThan(0);
+    expect(fifo.warnings).toEqual([]);
+    const view = buildPortfolioView({
+      fifo,
+      liveBtcBalance: '0',
+      btcPriceMyr: '1',
+      classifiedEvents: events,
+    });
+    expect(view.status).toBe('READY');
+    expect(view.excludedAssets).toEqual([{ asset: 'ETH' }]);
+    expect(view.warnings.some((row) => /untracked asset/i.test(row))).toBe(
+      false,
+    );
   });
 
   it('computes weighted average, unrealised, lifetime, and zero-BTC null average', () => {
@@ -522,6 +534,159 @@ describe('Luno BTC FIFO accounting', () => {
     });
     expect(view.principalRecoveryPct).toBe('100');
     expect(view.principalRecoveryPctRaw).toBe('100');
+    expect(view.remainingUnrecoveredPrincipalMyr).toBe('0');
+  });
+
+  it('drops principal recovery below 100% when new capital is added after full recovery', () => {
+    const firstCycle: SourceTx[] = [
+      tx({
+        id: '1',
+        lunoAccountId: BTC,
+        rowIndex: '1',
+        reference: 'b',
+        currency: 'XBT',
+        kind: 'EXCHANGE',
+        description: 'Bought',
+        balanceDelta: '0.002',
+      }),
+      tx({
+        id: '2',
+        lunoAccountId: MYR,
+        rowIndex: '1',
+        reference: 'b',
+        currency: 'MYR',
+        kind: 'EXCHANGE',
+        description: 'Bought',
+        balanceDelta: '-821',
+      }),
+      tx({
+        id: '3',
+        lunoAccountId: BTC,
+        rowIndex: '2',
+        reference: 's',
+        currency: 'XBT',
+        kind: 'EXCHANGE',
+        description: 'Sold',
+        balanceDelta: '-0.002',
+        occurredAt: new Date('2024-06-01T00:00:00.000Z'),
+      }),
+      tx({
+        id: '4',
+        lunoAccountId: MYR,
+        rowIndex: '2',
+        reference: 's',
+        currency: 'MYR',
+        kind: 'EXCHANGE',
+        description: 'Sold',
+        balanceDelta: '1011.13',
+        occurredAt: new Date('2024-06-01T00:00:00.000Z'),
+      }),
+    ];
+    const recoveredEvents = classifyLunoTransactions(firstCycle, BTC, MYR);
+    const recoveredView = buildPortfolioView({
+      fifo: runFifo(recoveredEvents),
+      liveBtcBalance: '0',
+      btcPriceMyr: '1',
+      classifiedEvents: recoveredEvents,
+    });
+    expect(recoveredView.principalRecoveryPct).toBe('100');
+    expect(recoveredView.remainingUnrecoveredPrincipalMyr).toBe('0');
+
+    const withNewCapital: SourceTx[] = [
+      ...firstCycle,
+      tx({
+        id: '5',
+        lunoAccountId: BTC,
+        rowIndex: '3',
+        reference: 'n1',
+        currency: 'XBT',
+        kind: 'EXCHANGE',
+        description: 'Bought',
+        balanceDelta: '0.0001',
+        occurredAt: new Date('2026-09-14T00:00:00.000Z'),
+      }),
+      tx({
+        id: '6',
+        lunoAccountId: MYR,
+        rowIndex: '3',
+        reference: 'n1',
+        currency: 'MYR',
+        kind: 'EXCHANGE',
+        description: 'Bought',
+        balanceDelta: '-30',
+        occurredAt: new Date('2026-09-14T00:00:00.000Z'),
+      }),
+      tx({
+        id: '7',
+        lunoAccountId: BTC,
+        rowIndex: '4',
+        reference: 'n2',
+        currency: 'XBT',
+        kind: 'EXCHANGE',
+        description: 'Bought',
+        balanceDelta: '0.00006',
+        occurredAt: new Date('2026-09-16T00:00:00.000Z'),
+      }),
+      tx({
+        id: '8',
+        lunoAccountId: MYR,
+        rowIndex: '4',
+        reference: 'n2',
+        currency: 'MYR',
+        kind: 'EXCHANGE',
+        description: 'Bought',
+        balanceDelta: '-20',
+        occurredAt: new Date('2026-09-16T00:00:00.000Z'),
+      }),
+    ];
+    const afterEvents = classifyLunoTransactions(withNewCapital, BTC, MYR);
+    const fifo = runFifo(afterEvents);
+    expect(fifo.moneyPutInMyr).toBe('871');
+    expect(fifo.principalRecoveredMyr).toBe('821');
+    const view = buildPortfolioView({
+      fifo,
+      liveBtcBalance: remainingBtc(fifo.lots),
+      btcPriceMyr: '1',
+      classifiedEvents: afterEvents,
+    });
+    expect(view.principalRecoveryPctRaw).toBe('94.25947187');
+    expect(view.principalRecoveryPct).toBe('94.25947187');
+    expect(view.remainingUnrecoveredPrincipalMyr).toBe('50');
+
+    const soldAgain: SourceTx[] = [
+      ...withNewCapital,
+      tx({
+        id: '9',
+        lunoAccountId: BTC,
+        rowIndex: '5',
+        reference: 's2',
+        currency: 'XBT',
+        kind: 'EXCHANGE',
+        description: 'Sold',
+        balanceDelta: '-0.00016',
+        occurredAt: new Date('2026-10-01T00:00:00.000Z'),
+      }),
+      tx({
+        id: '10',
+        lunoAccountId: MYR,
+        rowIndex: '5',
+        reference: 's2',
+        currency: 'MYR',
+        kind: 'EXCHANGE',
+        description: 'Sold',
+        balanceDelta: '60',
+        occurredAt: new Date('2026-10-01T00:00:00.000Z'),
+      }),
+    ];
+    const againEvents = classifyLunoTransactions(soldAgain, BTC, MYR);
+    const again = buildPortfolioView({
+      fifo: runFifo(againEvents),
+      liveBtcBalance: '0',
+      btcPriceMyr: '1',
+      classifiedEvents: againEvents,
+    });
+    expect(again.principalRecoveryPct).toBe('100');
+    expect(again.remainingUnrecoveredPrincipalMyr).toBe('0');
   });
 
   it('caps displayed principal recovery at 100 when the raw ratio exceeds 100', () => {
@@ -631,14 +796,17 @@ describe('Luno BTC FIFO accounting', () => {
     );
     const fifo = runFifo(events);
     expect(fifo.externalContributionMyr).toBe('200');
+    expect(fifo.moneyPutInMyr).toBe('450');
     expect(fifo.principalRecoveredMyr).toBe('450');
     const view = buildPortfolioView({
       fifo,
       liveBtcBalance: '0',
       btcPriceMyr: '1',
+      classifiedEvents: events,
     });
-    expect(view.principalRecoveryPctRaw).toBe('225');
+    expect(view.principalRecoveryPctRaw).toBe('100');
     expect(view.principalRecoveryPct).toBe('100');
+    expect(view.remainingUnrecoveredPrincipalMyr).toBe('0');
   });
 
   it('treats reinvested sale proceeds as not new external contribution', () => {
