@@ -62,6 +62,9 @@ export function runFifo(events: ClassifiedEvent[]): FifoResult {
   });
 
   for (const event of sorted) {
+    if (event.classification === 'EXCLUDED_ASSET') {
+      continue;
+    }
     if (event.classification === 'UNKNOWN') {
       warnings.push(event.warning ?? 'Unknown Luno record preserved.');
       continue;

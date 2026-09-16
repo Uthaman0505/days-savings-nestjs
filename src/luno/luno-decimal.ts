@@ -128,6 +128,12 @@ export function minDecimal(left: string, right: string): string {
     : asDecimalString(right);
 }
 
+export function maxDecimal(left: string, right: string): string {
+  return compareDecimal(left, right) >= 0
+    ? asDecimalString(left)
+    : asDecimalString(right);
+}
+
 export function multiplyDecimalStrings(left: string, right: string): string {
   const a = splitSigned(asDecimalString(left));
   const b = splitSigned(asDecimalString(right));

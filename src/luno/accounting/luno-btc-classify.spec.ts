@@ -185,7 +185,7 @@ describe('classifyLunoTransactions', () => {
     expect(events[0].myrAmount).toBe('50');
   });
 
-  it('preserves unknown untracked assets with a warning', () => {
+  it('excludes non-BTC assets from BTC accounting without a failure warning', () => {
     const events = classifyLunoTransactions(
       [
         tx({
@@ -198,12 +198,34 @@ describe('classifyLunoTransactions', () => {
           description: 'Mystery',
           balanceDelta: '1',
         }),
+        tx({
+          id: 'u2',
+          lunoAccountId: 'eth-acc',
+          rowIndex: '1',
+          reference: 'eth-buy',
+          currency: 'ETH',
+          kind: 'EXCHANGE',
+          description: 'Bought ETH',
+          balanceDelta: '0.5',
+        }),
+        tx({
+          id: 'u3',
+          lunoAccountId: MYR,
+          rowIndex: '2',
+          reference: 'eth-buy',
+          currency: 'MYR',
+          kind: 'EXCHANGE',
+          description: 'Bought ETH',
+          balanceDelta: '-100',
+        }),
       ],
       BTC,
       MYR,
     );
-    expect(events[0].classification).toBe('UNKNOWN');
-    expect(events[0].warning).toMatch(/Untracked asset ETH/);
+    expect(events.every((row) => row.classification === 'EXCLUDED_ASSET')).toBe(
+      true,
+    );
+    expect(events.every((row) => row.excludedAsset === 'ETH')).toBe(true);
   });
 
   it('attaches order fee_counter once and does not overwrite a statement fee', () => {
