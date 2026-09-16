@@ -5,6 +5,7 @@ import { AppModule } from '../app.module';
 import { User } from '../user/user.entity';
 import { LunoBtcAccountingService } from './luno-btc-accounting.service';
 import { LunoBtcBudgetService } from './luno-btc-budget.service';
+import { LunoBtcDecisionService } from './luno-btc-decision.service';
 import { LunoHealthService } from './luno-health.service';
 
 /**
@@ -79,6 +80,21 @@ async function main(): Promise<void> {
           `strategyMoneyReady=${context.strategyMoneyReady} accountingStatus=${context.accountingStatus}`,
         ].join('\n'),
         'LunoBtcBudget',
+      );
+      const decision = await app
+        .get(LunoBtcDecisionService)
+        .getCurrentDecision(owner[0].id);
+      Logger.log(
+        [
+          'BTC decision (Phase 4)',
+          `action=${decision.action} zone=${decision.zone} pct=${decision.priceDifferencePct ?? 'n/a'}`,
+          `suggested=${decision.suggestedAmountMyr ?? 'none'} remaining=${decision.monthlyRemainingMyr ?? 'n/a'} maxAllowed=${decision.maxAllowedNewSpendMyr}`,
+          `price=${decision.currentPriceMyr ?? 'n/a'} avgBuy=${decision.averageBuyPriceMyr ?? 'n/a'}`,
+          `lunoMyrAvailable=${decision.lunoMyrAvailableMyr ?? 'n/a'} topUp=${decision.topUpNeededMyr ?? 'n/a'}`,
+          `eventId=${decision.eventId ?? 'none'}`,
+          ...decision.reason,
+        ].join('\n'),
+        'LunoBtcDecision',
       );
     } else {
       Logger.log('No user found for budget summary.', 'LunoBtcBudget');

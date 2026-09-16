@@ -25,6 +25,7 @@ import { LunoApiService } from './luno-api.service';
 import { LunoSyncService } from './luno-sync.service';
 import { LunoBtcAccountingService } from './luno-btc-accounting.service';
 import { LunoBtcBudgetService } from './luno-btc-budget.service';
+import { LunoBtcDecisionService } from './luno-btc-decision.service';
 
 type AuthedRequest = Request & { user?: JwtUser };
 
@@ -43,6 +44,7 @@ export class LunoController {
     private readonly api: LunoApiService,
     private readonly accounting: LunoBtcAccountingService,
     private readonly budget: LunoBtcBudgetService,
+    private readonly decision: LunoBtcDecisionService,
   ) {}
 
   @Get('ticker')
@@ -71,6 +73,11 @@ export class LunoController {
       await this.accounting.rebuildBtcAccounting();
     } catch {
       // Phase 1 sync must still succeed if derived accounting rebuild fails.
+    }
+    try {
+      await this.decision.recalculateAllForCurrentMonth();
+    } catch {
+      // Decision refresh is advisory and must not fail a Luno sync.
     }
     return result;
   }
@@ -144,5 +151,23 @@ export class LunoController {
   @UseGuards(AuthGuard('jwt'))
   getStrategyContext(@Req() req: AuthedRequest) {
     return this.budget.getStrategyContext(requireUserId(req));
+  }
+
+  @Get('btc/decision/current')
+  @UseGuards(AuthGuard('jwt'))
+  getCurrentDecision(@Req() req: AuthedRequest) {
+    return this.decision.getCurrentDecision(requireUserId(req));
+  }
+
+  @Get('btc/decision/history')
+  @UseGuards(AuthGuard('jwt'))
+  getDecisionHistory(@Req() req: AuthedRequest) {
+    return this.decision.getDecisionHistory(requireUserId(req));
+  }
+
+  @Post('btc/decision/recalculate')
+  @UseGuards(AuthGuard('jwt'))
+  recalculateDecision(@Req() req: AuthedRequest) {
+    return this.decision.recalculateCurrentBtcDecision(requireUserId(req));
   }
 }

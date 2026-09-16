@@ -78,12 +78,16 @@ export class LunoBtcAccountingService {
     accountingStatus: BtcPortfolioView['status'];
     classifiedEvents: ClassifiedEvent[];
     currentMonth: BtcPortfolioView['currentMonth'];
+    currentBtcPriceMyr: string | null;
+    averageBuyPriceMyr: string | null;
   }> {
     const details = await this.compute();
     return {
       accountingStatus: details.portfolio.status,
       classifiedEvents: details.classifiedEvents,
       currentMonth: details.portfolio.currentMonth,
+      currentBtcPriceMyr: details.portfolio.btcPriceMyr,
+      averageBuyPriceMyr: details.portfolio.averageBuyPriceMyr,
     };
   }
 
