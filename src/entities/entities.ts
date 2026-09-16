@@ -67,6 +67,8 @@ import { LunoBtcLot } from '../luno/entities/luno-btc-lot.entity';
 import { LunoBtcDisposal } from '../luno/entities/luno-btc-disposal.entity';
 import { LunoBtcDisposalLot } from '../luno/entities/luno-btc-disposal-lot.entity';
 import { LunoBtcAccountingSnapshot } from '../luno/entities/luno-btc-snapshot.entity';
+import { LunoBtcMonthlyBudget } from '../luno/entities/luno-btc-monthly-budget.entity';
+import { LunoBtcMoneyBucket } from '../luno/entities/luno-btc-money-bucket.entity';
 
 export const entities = [
   User,
@@ -131,4 +133,6 @@ export const entities = [
   LunoBtcDisposal,
   LunoBtcDisposalLot,
   LunoBtcAccountingSnapshot,
+  LunoBtcMonthlyBudget,
+  LunoBtcMoneyBucket,
 ];

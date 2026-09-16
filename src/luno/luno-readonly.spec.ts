@@ -22,11 +22,12 @@ describe('Luno read-only surface', () => {
     );
   });
 
-  it('does not add strategy or trading recommendations in Phase 2 accounting', () => {
+  it('does not add strategy recommendations or Luno write endpoints', () => {
     const src = [
       'luno-api.service.ts',
       'luno-sync.service.ts',
       'luno-btc-accounting.service.ts',
+      'luno-btc-budget.service.ts',
       'accounting/luno-btc-fifo.ts',
       'accounting/luno-btc-formulas.ts',
       'luno.controller.ts',
@@ -35,7 +36,9 @@ describe('Luno read-only surface', () => {
       .join('\n');
     expect(src).not.toMatch(/\bHARVEST\b/);
     expect(src).not.toMatch(/\bWAIT\b/);
+    expect(src).not.toMatch(/\bBUY SMALL\b/);
     expect(src).not.toContain('/api/1/marketorder');
     expect(src).not.toContain('/api/1/postorder');
+    expect(src).not.toContain('/api/1/send');
   });
 });
