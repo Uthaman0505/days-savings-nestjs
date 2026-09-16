@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -24,6 +24,7 @@ import {
   ECONOMIC_PROVIDER_TOKEN,
   NEWS_PROVIDER_TOKEN,
   DEFAULT_MACRO_LOOKAHEAD_MS,
+  NEWS_FRESH_MAX_AGE_MS,
   NEWS_RELEVANCE_MIN,
 } from './luno-news.constants';
 import { LunoNewsConfigService } from './luno-news-config.service';
@@ -73,7 +74,7 @@ export type LunoBtcCombinedDecisionView = LunoBtcFinalDecisionView & {
 };
 
 @Injectable()
-export class LunoBtcExternalRiskService {
+export class LunoBtcExternalRiskService implements OnModuleInit {
   private readonly logger = new Logger(LunoBtcExternalRiskService.name);
 
   constructor(
@@ -92,6 +93,10 @@ export class LunoBtcExternalRiskService {
   ) {}
 
   private lastFetchAt: Date | null = null;
+
+  async onModuleInit(): Promise<void> {
+    await this.refreshIfStaleOrMissing();
+  }
 
   @Cron('30 */45 * * * *')
   async scheduledNewsSync(): Promise<void> {
@@ -118,8 +123,22 @@ export class LunoBtcExternalRiskService {
   }
 
   async syncExternalRisk(): Promise<{ news: number; economic: number }> {
-    const news = await this.syncNewsEvents();
-    const economic = await this.syncEconomicEvents();
+    let news = 0;
+    let economic = 0;
+    try {
+      news = await this.syncNewsEvents();
+    } catch (error) {
+      this.logger.warn(
+        `News fetch skipped: ${error instanceof Error ? error.message : 'unknown'}`,
+      );
+    }
+    try {
+      economic = await this.syncEconomicEvents();
+    } catch (error) {
+      this.logger.warn(
+        `Economic calendar skipped: ${error instanceof Error ? error.message : 'unknown'}`,
+      );
+    }
     return { news, economic };
   }
 
@@ -209,6 +228,7 @@ export class LunoBtcExternalRiskService {
   }
 
   async getExternalRisk(now = new Date()): Promise<LunoBtcExternalRiskView> {
+    await this.refreshIfStaleOrMissing();
     const snapshot = await this.latestSnapshot(now);
     return this.toRiskView(snapshot);
   }
@@ -216,6 +236,7 @@ export class LunoBtcExternalRiskService {
   async getExternalRiskEvents(
     now = new Date(),
   ): Promise<LunoBtcExternalRiskEventView[]> {
+    await this.refreshIfStaleOrMissing();
     const [newsRows, economicRows] = await Promise.all([
       this.newsEvents.find({
         order: { publishedAt: 'DESC' },
@@ -266,6 +287,7 @@ export class LunoBtcExternalRiskService {
   }
 
   async getFinalDecision(userId: string): Promise<LunoBtcCombinedDecisionView> {
+    await this.refreshIfStaleOrMissing();
     const phase5 = await this.market.getFinalDecision(userId);
     const risk = await this.latestSnapshot();
     const modified = applyExternalRiskModifier(phase5.finalDecision, risk);
@@ -306,6 +328,30 @@ export class LunoBtcExternalRiskService {
         snapshot.lastSuccessfulFetchAt?.toISOString() ?? null,
       calculatedAt: snapshot.calculatedAt.toISOString(),
     };
+  }
+
+  private async refreshIfStaleOrMissing(): Promise<void> {
+    if (
+      this.newsProvider.name === 'NONE' &&
+      this.economicProvider.name === 'NONE'
+    ) {
+      return;
+    }
+    const lastFetch = await this.resolveLastFetchAt();
+    if (
+      lastFetch &&
+      Date.now() - lastFetch.getTime() <= NEWS_FRESH_MAX_AGE_MS
+    ) {
+      return;
+    }
+    try {
+      await this.syncExternalRisk();
+      await this.recalculateExternalRisk();
+    } catch (error) {
+      this.logger.warn(
+        `External risk refresh skipped: ${error instanceof Error ? error.message : 'unknown'}`,
+      );
+    }
   }
 
   private async latestSnapshot(

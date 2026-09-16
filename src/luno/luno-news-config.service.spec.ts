@@ -27,6 +27,16 @@ describe('LunoNewsConfigService', () => {
     expect(service.enabled).toBe(true);
   });
 
+  it('accepts the FINHUB spelling as Finnhub', () => {
+    const service = config({
+      NEWS_PROVIDER: 'FINHUB',
+      NEWS_API_KEY: 'token',
+      ECONOMIC_PROVIDER: 'FinHub',
+    });
+    expect(service.newsProviderName).toBe('FINNHUB');
+    expect(service.economicProviderName).toBe('FINNHUB');
+  });
+
   it('reads a 24-hour lookahead by default', () => {
     expect(config({}).lookaheadHours).toBe(24);
     expect(config({ EXTERNAL_RISK_LOOKAHEAD_HOURS: '12' }).lookaheadHours).toBe(

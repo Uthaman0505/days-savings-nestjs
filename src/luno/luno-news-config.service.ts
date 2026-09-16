@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FINNHUB_DEFAULT_BASE_URL } from './luno-news.constants';
 import type { LunoBtcNewsProviderName } from './entities/luno-btc-news-event.entity';
@@ -15,8 +15,22 @@ function envFlag(value: string | undefined | null): boolean | null {
 }
 
 @Injectable()
-export class LunoNewsConfigService {
+export class LunoNewsConfigService implements OnModuleInit {
+  private readonly logger = new Logger(LunoNewsConfigService.name);
+
   constructor(private readonly config: ConfigService) {}
+
+  onModuleInit(): void {
+    if (!this.enabled) {
+      this.logger.log(
+        'External risk disabled. Set NEWS_API_KEY (and NEWS_PROVIDER=FINNHUB) on the backend service the app calls.',
+      );
+      return;
+    }
+    this.logger.log(
+      `External risk enabled. news=${this.newsProviderName} economic=${this.economicProviderName}.`,
+    );
+  }
 
   get newsProviderName(): LunoBtcNewsProviderName {
     return this.namedProvider('NEWS_PROVIDER', this.newsApiKey);
@@ -67,7 +81,7 @@ export class LunoNewsConfigService {
     key: string,
     apiKey: string | null,
   ): LunoBtcNewsProviderName {
-    const raw = this.config.get<string>(key)?.trim().toUpperCase();
+    const raw = this.normalizeProviderName(this.config.get<string>(key));
     if (raw === 'NONE') {
       return 'NONE';
     }
@@ -75,6 +89,22 @@ export class LunoNewsConfigService {
       return 'FINNHUB';
     }
     if (!raw && apiKey) {
+      return 'FINNHUB';
+    }
+    return 'NONE';
+  }
+
+  private normalizeProviderName(
+    value: string | undefined,
+  ): LunoBtcNewsProviderName | '' {
+    const raw = value?.trim().toUpperCase();
+    if (!raw) {
+      return '';
+    }
+    if (raw === 'NONE') {
+      return 'NONE';
+    }
+    if (raw === 'FINNHUB' || raw === 'FINHUB') {
       return 'FINNHUB';
     }
     return 'NONE';

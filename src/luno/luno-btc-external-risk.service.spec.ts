@@ -86,4 +86,90 @@ describe('LunoBtcExternalRiskService', () => {
     expect(combined.externalRisk.status).toBe('UNAVAILABLE');
     expect(combined.externalRisk.reasons[0]).toMatch(/unavailable/i);
   });
+
+  it('still stores news when the economic calendar provider fails', async () => {
+    const newsSave = jest.fn(async (row) => row);
+    const snapshotSave = jest.fn(async (row) => row);
+    const module = await Test.createTestingModule({
+      providers: [
+        LunoBtcExternalRiskService,
+        {
+          provide: getRepositoryToken(LunoBtcNewsEvent),
+          useValue: {
+            find: jest.fn(async () => []),
+            findOne: jest.fn(async () => null),
+            create: jest.fn((row) => row),
+            save: newsSave,
+          },
+        },
+        {
+          provide: getRepositoryToken(LunoBtcEconomicEvent),
+          useValue: {
+            find: jest.fn(async () => []),
+            findOne: jest.fn(async () => null),
+            create: jest.fn((row) => row),
+            save: jest.fn(async (row) => row),
+          },
+        },
+        {
+          provide: getRepositoryToken(LunoBtcNewsRiskSnapshot),
+          useValue: {
+            find: jest.fn(async () => []),
+            create: jest.fn((row) => row),
+            save: snapshotSave,
+          },
+        },
+        {
+          provide: NEWS_PROVIDER_TOKEN,
+          useValue: {
+            name: 'FINNHUB',
+            fetchLatestNews: async () => [
+              {
+                externalId: '1',
+                provider: 'FINNHUB',
+                sourceName: 'Reuters',
+                sourceUrl: 'https://www.reuters.com/example',
+                headline: 'New digital-asset regulation was announced',
+                summary: 'A short provider summary.',
+                publishedAt: new Date('2026-09-16T12:00:00.000Z'),
+                countryOrRegion: 'US',
+                raw: {},
+              },
+            ],
+            healthCheck: async () => true,
+          },
+        },
+        {
+          provide: ECONOMIC_PROVIDER_TOKEN,
+          useValue: {
+            name: 'FINNHUB',
+            fetchEconomicEvents: async () => {
+              throw new Error('Finnhub HTTP 403');
+            },
+            healthCheck: async () => false,
+          },
+        },
+        {
+          provide: LunoNewsConfigService,
+          useValue: { lookaheadHours: 24 },
+        },
+        {
+          provide: LunoBtcMarketService,
+          useValue: {
+            getLatestBtcMarketSnapshot: jest.fn(async () => null),
+          },
+        },
+      ],
+    }).compile();
+    const service = module.get(LunoBtcExternalRiskService);
+    const synced = await service.syncExternalRisk();
+    expect(synced.news).toBe(1);
+    expect(synced.economic).toBe(0);
+    expect(newsSave).toHaveBeenCalled();
+    await service.recalculateExternalRisk(new Date('2026-09-16T12:05:00.000Z'));
+    expect(snapshotSave).toHaveBeenCalled();
+    expect(snapshotSave.mock.calls[0][0].newsDataStatus).not.toBe(
+      'UNAVAILABLE',
+    );
+  });
 });
