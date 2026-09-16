@@ -25,8 +25,19 @@ import { LunoBtcMoneyBucket } from './entities/luno-btc-money-bucket.entity';
 import { LunoBtcStrategyEvent } from './entities/luno-btc-strategy-event.entity';
 import { LunoBtcMarketCandle } from './entities/luno-btc-market-candle.entity';
 import { LunoBtcMarketSnapshot } from './entities/luno-btc-market-snapshot.entity';
+import { LunoBtcNewsEvent } from './entities/luno-btc-news-event.entity';
+import { LunoBtcEconomicEvent } from './entities/luno-btc-economic-event.entity';
+import { LunoBtcNewsRiskSnapshot } from './entities/luno-btc-news-risk-snapshot.entity';
 import { LunoBtcDecisionService } from './luno-btc-decision.service';
 import { LunoBtcMarketService } from './luno-btc-market.service';
+import { LunoBtcExternalRiskService } from './luno-btc-external-risk.service';
+import { LunoNewsConfigService } from './luno-news-config.service';
+import { DisabledNewsProvider } from './news/disabled-news.provider';
+import { FinnhubNewsProvider } from './news/finnhub-news.provider';
+import {
+  ECONOMIC_PROVIDER_TOKEN,
+  NEWS_PROVIDER_TOKEN,
+} from './luno-news.constants';
 
 export const LUNO_ENTITIES = [
   LunoSyncRun,
@@ -46,6 +57,9 @@ export const LUNO_ENTITIES = [
   LunoBtcStrategyEvent,
   LunoBtcMarketCandle,
   LunoBtcMarketSnapshot,
+  LunoBtcNewsEvent,
+  LunoBtcEconomicEvent,
+  LunoBtcNewsRiskSnapshot,
 ];
 
 @Module({
@@ -63,6 +77,34 @@ export const LUNO_ENTITIES = [
     LunoBtcBudgetService,
     LunoBtcDecisionService,
     LunoBtcMarketService,
+    LunoNewsConfigService,
+    {
+      provide: NEWS_PROVIDER_TOKEN,
+      useFactory: (config: LunoNewsConfigService) => {
+        if (config.newsProviderName === 'FINNHUB' && config.newsApiKey) {
+          return new FinnhubNewsProvider(config.newsApiKey, config.newsBaseUrl);
+        }
+        return new DisabledNewsProvider();
+      },
+      inject: [LunoNewsConfigService],
+    },
+    {
+      provide: ECONOMIC_PROVIDER_TOKEN,
+      useFactory: (config: LunoNewsConfigService) => {
+        if (
+          config.economicProviderName === 'FINNHUB' &&
+          config.economicApiKey
+        ) {
+          return new FinnhubNewsProvider(
+            config.economicApiKey,
+            config.newsBaseUrl,
+          );
+        }
+        return new DisabledNewsProvider();
+      },
+      inject: [LunoNewsConfigService],
+    },
+    LunoBtcExternalRiskService,
   ],
   exports: [
     LunoApiService,
@@ -72,6 +114,7 @@ export const LUNO_ENTITIES = [
     LunoBtcBudgetService,
     LunoBtcDecisionService,
     LunoBtcMarketService,
+    LunoBtcExternalRiskService,
   ],
 })
 export class LunoModule {}
