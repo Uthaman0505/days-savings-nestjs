@@ -248,8 +248,9 @@ export class LunoBtcMarketService {
     return this.toMarketContextView(snapshot);
   }
 
-  async getFinalDecision(userId: string): Promise<LunoBtcFinalDecisionView> {
-    const base = await this.decision.getCurrentDecision(userId);
+  async composeFromCachedDecision(
+    base: LunoBtcDecisionView,
+  ): Promise<LunoBtcFinalDecisionView> {
     const snapshot = await this.getLatestBtcMarketSnapshot(
       base.averageBuyPriceMyr,
     );
@@ -268,6 +269,11 @@ export class LunoBtcMarketService {
         modifiedByMarketContext: modified.modifiedByMarketContext,
       },
     };
+  }
+
+  async getFinalDecision(userId: string): Promise<LunoBtcFinalDecisionView> {
+    const base = await this.decision.getCurrentDecision(userId);
+    return this.composeFromCachedDecision(base);
   }
 
   private async upsertCandles(

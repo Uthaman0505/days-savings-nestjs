@@ -10,6 +10,7 @@ import type { LunoSyncRun } from './entities/luno-sync-run.entity';
 import type { LunoTransactionRow } from './entities/luno-transaction.entity';
 import type { LunoTransferRow } from './entities/luno-transfer.entity';
 import type { LunoWithdrawalRow } from './entities/luno-withdrawal.entity';
+import { LUNO_TX_OVERLAP_ROWS } from './luno.constants';
 import type {
   LunoAccountBalance,
   LunoOrder,
@@ -32,6 +33,37 @@ function memoryRepo<T extends MemoryRow>(keyOf: (row: T) => string) {
       rows.set(keyOf(row), row);
       return row;
     }),
+    find: jest.fn(
+      async (opts?: {
+        where?: Record<string, unknown>;
+        order?: Record<string, 'ASC' | 'DESC'>;
+        take?: number;
+        select?: string[];
+      }) => {
+        let list = [...rows.values()];
+        if (opts?.where) {
+          list = list.filter((row) =>
+            Object.entries(opts.where ?? {}).every(
+              ([key, value]) => row[key] === value,
+            ),
+          );
+        }
+        if (opts?.order) {
+          const [key, dir] = Object.entries(opts.order)[0] ?? [];
+          if (key && dir) {
+            list.sort((a, b) => {
+              const av = Number(a[key]) || 0;
+              const bv = Number(b[key]) || 0;
+              return dir === 'DESC' ? bv - av : av - bv;
+            });
+          }
+        }
+        if (opts?.take != null) {
+          list = list.slice(0, opts.take);
+        }
+        return list;
+      },
+    ),
     findOne: jest.fn(async ({ where }: { where: Record<string, unknown> }) => {
       const match = [...rows.values()].find((row) =>
         Object.entries(where).every(([key, value]) => row[key] === value),
@@ -142,7 +174,36 @@ describe('LunoSyncService', () => {
     await service.runSync();
     await service.runSync();
     expect(transactions.rows.size).toBe(1);
-    expect(api.getTransactions).toHaveBeenCalled();
+    expect(api.getTransactions).toHaveBeenCalledWith('btc-1', { minRow: 1 });
+    expect(api.getTransactions).toHaveBeenCalledWith('myr-1', { minRow: 1 });
+  });
+
+  it('fetches only newer transactions with an overlap window', async () => {
+    const api = {
+      getBalances: jest.fn(async () => sampleBalances),
+      getOrders: jest.fn(async () => [] as LunoOrder[]),
+      getWithdrawals: jest.fn(async () => [] as LunoWithdrawal[]),
+      getTransactions: jest.fn(async () => []),
+      getTransfers: jest.fn(async () => [] as LunoTransfer[]),
+      getUserTrades: jest.fn(async () => []),
+    };
+    const { service, transactions } = makeSync(api);
+    await transactions.save({
+      lunoAccountId: 'btc-1',
+      rowIndex: '5000',
+      currency: 'XBT',
+      balance: '0.01',
+      balanceDelta: '0.01',
+      available: '0.01',
+      availableDelta: '0.01',
+      occurredAt: new Date(),
+      syncedAt: new Date(),
+    } as LunoTransactionRow);
+    await service.runSync();
+    expect(api.getTransactions).toHaveBeenCalledWith('btc-1', {
+      minRow: 5000 - LUNO_TX_OVERLAP_ROWS + 1,
+    });
+    expect(api.getTransactions).toHaveBeenCalledWith('myr-1', { minRow: 1 });
   });
 
   it('does not duplicate orders, withdrawals, or transfers', async () => {
