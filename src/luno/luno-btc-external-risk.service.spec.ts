@@ -87,6 +87,83 @@ describe('LunoBtcExternalRiskService', () => {
     expect(combined.externalRisk.reasons[0]).toMatch(/unavailable/i);
   });
 
+  it('does not fetch Finnhub when composing a cached final decision', async () => {
+    const fetchLatestNews = jest.fn();
+    const fetchEconomicEvents = jest.fn();
+    const composeFromCachedDecision = jest.fn(async () => ({
+      baseDecision: {
+        action: 'WAIT',
+        displayAction: 'WAIT',
+        suggestedAmountMyr: null,
+      },
+      marketContext: null,
+      finalDecision: {
+        action: 'WAIT',
+        displayAction: 'WAIT',
+        suggestedAmountMyr: null,
+        monthlyRemainingMyr: '50.00',
+        maxAllowedNewSpendMyr: '50.00',
+        monthlyBudgetMyr: '100.00',
+        monthlyUsedMyr: '50.00',
+        reason: ['Price is not in a buy zone.'],
+        modifiedByMarketContext: false,
+      },
+    }));
+    const module = await Test.createTestingModule({
+      providers: [
+        LunoBtcExternalRiskService,
+        {
+          provide: getRepositoryToken(LunoBtcNewsEvent),
+          useValue: { find: jest.fn(async () => []) },
+        },
+        {
+          provide: getRepositoryToken(LunoBtcEconomicEvent),
+          useValue: { find: jest.fn(async () => []) },
+        },
+        {
+          provide: getRepositoryToken(LunoBtcNewsRiskSnapshot),
+          useValue: { find: jest.fn(async () => []) },
+        },
+        {
+          provide: NEWS_PROVIDER_TOKEN,
+          useValue: {
+            name: 'FINNHUB',
+            fetchLatestNews,
+            healthCheck: async () => true,
+          },
+        },
+        {
+          provide: ECONOMIC_PROVIDER_TOKEN,
+          useValue: {
+            name: 'FINNHUB',
+            fetchEconomicEvents,
+            healthCheck: async () => true,
+          },
+        },
+        {
+          provide: LunoNewsConfigService,
+          useValue: { lookaheadHours: 24 },
+        },
+        {
+          provide: LunoBtcMarketService,
+          useValue: { composeFromCachedDecision },
+        },
+      ],
+    }).compile();
+    const service = module.get(LunoBtcExternalRiskService);
+    const combined = await service.composeFromCachedDecision({
+      action: 'WAIT',
+      displayAction: 'WAIT',
+      suggestedAmountMyr: null,
+      averageBuyPriceMyr: '326000',
+      reason: ['Price is not in a buy zone.'],
+    } as never);
+    expect(combined.finalDecision.action).toBe('WAIT');
+    expect(fetchLatestNews).not.toHaveBeenCalled();
+    expect(fetchEconomicEvents).not.toHaveBeenCalled();
+    expect(composeFromCachedDecision).toHaveBeenCalledTimes(1);
+  });
+
   it('still stores news when the economic calendar provider fails', async () => {
     const newsSave = jest.fn(async (row) => row);
     const snapshotSave = jest.fn(async (row) => row);

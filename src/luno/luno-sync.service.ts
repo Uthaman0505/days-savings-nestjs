@@ -6,6 +6,7 @@ import { LunoApiException } from './luno-api.errors';
 import { LunoApiService } from './luno-api.service';
 import { LunoConfigService } from './luno-config.service';
 import { redactSecrets } from './luno-redact';
+import { LUNO_TX_OVERLAP_ROWS } from './luno.constants';
 import { LunoAccount } from './entities/luno-account.entity';
 import { LunoBalance } from './entities/luno-balance.entity';
 import { LunoOrderRow } from './entities/luno-order.entity';
@@ -23,6 +24,31 @@ import type {
   LunoUserTrade,
   LunoWithdrawal,
 } from './luno.types';
+
+export async function measureSyncStage<T>(
+  logger: Logger,
+  stage: string,
+  fn: () => Promise<T>,
+): Promise<{ value: T; ms: number }> {
+  const started = Date.now();
+  try {
+    const value = await fn();
+    const ms = Date.now() - started;
+    logger.log(JSON.stringify({ event: 'LUNO_SYNC', stage, ms }));
+    return { value, ms };
+  } catch (error) {
+    const ms = Date.now() - started;
+    logger.warn(
+      JSON.stringify({
+        event: 'LUNO_SYNC',
+        stage,
+        ms,
+        failed: true,
+      }),
+    );
+    throw error;
+  }
+}
 
 @Injectable()
 export class LunoSyncService {
@@ -88,7 +114,10 @@ export class LunoSyncService {
 
     let listed: LunoAccountBalance[] = [];
     try {
-      listed = await this.api.getBalances();
+      const timed = await measureSyncStage(this.logger, 'balanceMs', () =>
+        this.api.getBalances(),
+      );
+      listed = timed.value;
       const identified = identifyBtcMyrAccounts(listed);
       result.btcAccountId = identified.btc?.account_id ?? null;
       result.myrAccountId = identified.myr?.account_id ?? null;
@@ -107,44 +136,74 @@ export class LunoSyncService {
       .map((row) => row.account_id)
       .filter((id) => id.length > 0);
 
-    try {
+    const independent = await Promise.allSettled([
+      measureSyncStage(this.logger, 'orderMs', () => this.api.getOrders()),
+      measureSyncStage(this.logger, 'tradeMs', () => this.api.getUserTrades()),
+      measureSyncStage(this.logger, 'withdrawalMs', () =>
+        this.api.getWithdrawals(),
+      ),
+    ]);
+
+    if (independent[0].status === 'fulfilled') {
       result.ordersUpserted = await this.persistOrders(
-        await this.api.getOrders(),
+        independent[0].value.value,
       );
-    } catch (error) {
-      errors.push(this.safeError('orders', error));
+    } else {
+      errors.push(this.safeError('orders', independent[0].reason));
     }
-
-    try {
-      await this.persistUserTrades(await this.api.getUserTrades());
-    } catch (error) {
-      errors.push(this.safeError('trades', error));
+    if (independent[1].status === 'fulfilled') {
+      await this.persistUserTrades(independent[1].value.value);
+    } else {
+      errors.push(this.safeError('trades', independent[1].reason));
     }
-
-    try {
+    if (independent[2].status === 'fulfilled') {
       result.withdrawalsUpserted = await this.persistWithdrawals(
-        await this.api.getWithdrawals(),
+        independent[2].value.value,
       );
-    } catch (error) {
-      errors.push(this.safeError('withdrawals', error));
+    } else {
+      errors.push(this.safeError('withdrawals', independent[2].reason));
     }
 
-    for (const accountId of accountIds) {
-      try {
-        const rows = await this.api.getTransactions(accountId);
-        result.transactionsUpserted += await this.persistTransactions(rows);
-      } catch (error) {
-        errors.push(this.safeError(`transactions:${accountId}`, error));
-      }
-      try {
-        const rows = await this.api.getTransfers(accountId);
-        result.transfersUpserted += await this.persistTransfers(
-          accountId,
-          rows,
-        );
-      } catch (error) {
-        errors.push(this.safeError(`transfers:${accountId}`, error));
-      }
+    const accountResults = await Promise.all(
+      accountIds.map(async (accountId) => {
+        const minRow = await this.nextTransactionMinRow(accountId);
+        const [txResult, transferResult] = await Promise.allSettled([
+          measureSyncStage(this.logger, `transactionMs:${accountId}`, () =>
+            this.api.getTransactions(accountId, { minRow }),
+          ),
+          measureSyncStage(this.logger, `transferMs:${accountId}`, () =>
+            this.api.getTransfers(accountId),
+          ),
+        ]);
+        const localErrors: string[] = [];
+        let transactionsUpserted = 0;
+        let transfersUpserted = 0;
+        if (txResult.status === 'fulfilled') {
+          transactionsUpserted = await this.persistTransactions(
+            txResult.value.value,
+          );
+        } else {
+          localErrors.push(
+            this.safeError(`transactions:${accountId}`, txResult.reason),
+          );
+        }
+        if (transferResult.status === 'fulfilled') {
+          transfersUpserted = await this.persistTransfers(
+            accountId,
+            transferResult.value.value,
+          );
+        } else {
+          localErrors.push(
+            this.safeError(`transfers:${accountId}`, transferResult.reason),
+          );
+        }
+        return { transactionsUpserted, transfersUpserted, localErrors };
+      }),
+    );
+    for (const row of accountResults) {
+      result.transactionsUpserted += row.transactionsUpserted;
+      result.transfersUpserted += row.transfersUpserted;
+      errors.push(...row.localErrors);
     }
 
     result.status =
@@ -171,7 +230,29 @@ export class LunoSyncService {
     run.transfersUpserted = result.transfersUpserted;
     run.errorMessage = errors.length ? errors.join(' | ') : null;
     await this.syncRuns.save(run);
+    this.logger.log(
+      JSON.stringify({
+        event: 'LUNO_SYNC',
+        stage: 'lunoDataMs',
+        ms: finishedAt.getTime() - startedAt.getTime(),
+        status: result.status,
+      }),
+    );
     return result;
+  }
+
+  private async nextTransactionMinRow(accountId: string): Promise<number> {
+    const latest = await this.transactions.find({
+      where: { lunoAccountId: accountId },
+      order: { rowIndex: 'DESC' },
+      take: 1,
+      select: ['rowIndex'],
+    });
+    const rowIndex = Number(latest[0]?.rowIndex);
+    if (!Number.isFinite(rowIndex) || rowIndex < 1) {
+      return 1;
+    }
+    return Math.max(1, rowIndex - LUNO_TX_OVERLAP_ROWS + 1);
   }
 
   private async persistAccounts(

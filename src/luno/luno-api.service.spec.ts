@@ -187,4 +187,15 @@ describe('LunoApiService', () => {
     });
     await makeApi(fetchImpl).getBtcMyrMarketPrice();
   });
+
+  it('requests transactions from a min_row for incremental sync', async () => {
+    const fetchImpl = jest.fn(async (url: string) => {
+      expect(url).toContain(
+        '/api/1/accounts/btc-1/transactions?min_row=4901&max_row=5901',
+      );
+      return jsonResponse({ id: 'btc-1', transactions: [] });
+    });
+    await makeApi(fetchImpl).getTransactions('btc-1', { minRow: 4901 });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
 });

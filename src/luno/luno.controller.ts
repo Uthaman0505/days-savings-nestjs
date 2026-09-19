@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Logger,
   Patch,
   Post,
   Req,
@@ -22,7 +23,7 @@ import {
 } from './dto/luno-btc-budget.dto';
 import { LunoHealthService } from './luno-health.service';
 import { LunoApiService } from './luno-api.service';
-import { LunoSyncService } from './luno-sync.service';
+import { LunoSyncService, measureSyncStage } from './luno-sync.service';
 import { LunoBtcAccountingService } from './luno-btc-accounting.service';
 import { LunoBtcBudgetService } from './luno-btc-budget.service';
 import { LunoBtcDecisionService } from './luno-btc-decision.service';
@@ -40,6 +41,8 @@ function requireUserId(req: AuthedRequest): string {
 
 @Controller('luno')
 export class LunoController {
+  private readonly syncLogger = new Logger('LunoSync');
+
   constructor(
     private readonly health: LunoHealthService,
     private readonly sync: LunoSyncService,
@@ -71,29 +74,87 @@ export class LunoController {
 
   @Post('sync')
   @UseGuards(AuthGuard('jwt'))
-  async syncNow(): Promise<LunoSyncResponseDto> {
-    const result = await this.sync.runSync();
+  async syncNow(@Req() req: AuthedRequest): Promise<LunoSyncResponseDto> {
+    const userId = requireUserId(req);
+    const started = Date.now();
+    const lunoTimed = await measureSyncStage(this.syncLogger, 'lunoMs', () =>
+      this.sync.runSync(),
+    );
+    const result = lunoTimed.value;
+    let accountingUpdated = false;
+    let decisionUpdated = false;
+    let accountingMs = 0;
+    let decisionMs = 0;
     try {
-      await this.accounting.rebuildBtcAccounting();
-    } catch {
-      // Phase 1 sync must still succeed if derived accounting rebuild fails.
+      const accountingTimed = await measureSyncStage(
+        this.syncLogger,
+        'accountingMs',
+        () => this.accounting.rebuildBtcAccounting(),
+      );
+      accountingMs = accountingTimed.ms;
+      accountingUpdated = true;
+    } catch (error) {
+      this.syncLogger.warn(
+        `Accounting rebuild skipped: ${error instanceof Error ? error.message : 'unknown'}`,
+      );
     }
-    try {
-      await this.decision.recalculateAllForCurrentMonth();
-    } catch {
-      // Decision refresh is advisory and must not fail a Luno sync.
+    if (accountingUpdated) {
+      try {
+        const decisionTimed = await measureSyncStage(
+          this.syncLogger,
+          'decisionMs',
+          () => this.decision.recalculateCurrentBtcDecision(userId),
+        );
+        decisionMs = decisionTimed.ms;
+        decisionUpdated = true;
+        try {
+          await this.externalRisk.composeFromCachedDecision(
+            decisionTimed.value,
+          );
+        } catch (error) {
+          this.syncLogger.warn(
+            `Cached Phase 5/6 compose skipped: ${error instanceof Error ? error.message : 'unknown'}`,
+          );
+        }
+      } catch (error) {
+        this.syncLogger.warn(
+          `Decision refresh skipped: ${error instanceof Error ? error.message : 'unknown'}`,
+        );
+      }
     }
-    try {
-      await this.market.syncBtcMarketData();
-      await this.market.calculateBtcMarketSnapshot();
-    } catch {
-      // Market intelligence is advisory and must not fail a Luno sync.
-    }
-    try {
-      await this.externalRisk.syncExternalRisk();
-      await this.externalRisk.recalculateExternalRisk();
-    } catch {
-      // External risk is advisory and must not fail a Luno sync.
+    const total = Date.now() - started;
+    this.syncLogger.log(
+      JSON.stringify({
+        event: 'LUNO_SYNC',
+        stage: 'totalMs',
+        ms: total,
+        lunoMs: lunoTimed.ms,
+        accountingMs,
+        decisionMs,
+        marketContextSource: 'CACHED',
+        externalRiskSource: 'CACHED',
+      }),
+    );
+    result.sync = {
+      lunoDataUpdated:
+        result.accountsUpserted +
+          result.transactionsUpserted +
+          result.ordersUpserted +
+          result.withdrawalsUpserted +
+          result.transfersUpserted >
+        0,
+      accountingUpdated,
+      decisionUpdated,
+      marketContextSource: 'CACHED',
+      externalRiskSource: 'CACHED',
+    };
+    if (process.env.NODE_ENV === 'development') {
+      result.timingMs = {
+        luno: lunoTimed.ms,
+        accounting: accountingMs,
+        decision: decisionMs,
+        total,
+      };
     }
     return result;
   }

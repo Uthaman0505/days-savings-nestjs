@@ -38,6 +38,7 @@ export function isAllowedLunoGetPath(pathAndQuery: string): boolean {
 export const LUNO_HTTP_TIMEOUT_MS = 15_000;
 export const LUNO_PAGE_LIMIT = 100;
 export const LUNO_TX_PAGE_SIZE = 1000;
+export const LUNO_TX_OVERLAP_ROWS = 100;
 export const LUNO_MAX_PAGES = 50;
 
 export const LUNO_FETCH = 'LUNO_FETCH';

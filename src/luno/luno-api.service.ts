@@ -135,9 +135,12 @@ export class LunoApiService {
     }));
   }
 
-  async getTransactions(accountId: string): Promise<LunoTransaction[]> {
+  async getTransactions(
+    accountId: string,
+    options?: { minRow?: number },
+  ): Promise<LunoTransaction[]> {
     const all: LunoTransaction[] = [];
-    let minRow = 1;
+    let minRow = Math.max(1, Math.floor(options?.minRow ?? 1));
     for (let page = 0; page < LUNO_MAX_PAGES; page += 1) {
       const maxRow = minRow + LUNO_TX_PAGE_SIZE;
       const path = `/api/1/accounts/${encodeURIComponent(accountId)}/transactions?min_row=${minRow}&max_row=${maxRow}`;

@@ -135,6 +135,21 @@ export type LunoHealthResult = {
   errors: string[];
 };
 
+export type LunoUserSyncMeta = {
+  lunoDataUpdated: boolean;
+  accountingUpdated: boolean;
+  decisionUpdated: boolean;
+  marketContextSource: 'CACHED';
+  externalRiskSource: 'CACHED';
+};
+
+export type LunoSyncTimingMs = {
+  luno: number;
+  accounting: number;
+  decision: number;
+  total: number;
+};
+
 export type LunoSyncResult = {
   status: 'SUCCESS' | 'PARTIAL' | 'FAILED';
   startedAt: string;
@@ -147,6 +162,8 @@ export type LunoSyncResult = {
   withdrawalsUpserted: number;
   transfersUpserted: number;
   errors: string[];
+  sync?: LunoUserSyncMeta;
+  timingMs?: LunoSyncTimingMs;
 };
 
 export type LunoCandle = {

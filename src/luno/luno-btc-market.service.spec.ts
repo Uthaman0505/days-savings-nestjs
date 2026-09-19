@@ -107,6 +107,25 @@ describe('LunoBtcMarketService', () => {
     expect(JSON.stringify(service)).not.toContain('postorder');
   });
 
+  it('composes a cached decision without fetching candles', async () => {
+    const before = fetchCount;
+    const view = await service.composeFromCachedDecision({
+      action: 'WAIT',
+      displayAction: 'WAIT',
+      suggestedAmountMyr: null,
+      averageBuyPriceMyr: '326000',
+      reason: ['Price is not in a buy zone.'],
+      monthlyRemainingMyr: '50.00',
+      maxAllowedNewSpendMyr: '50.00',
+      monthlyBudgetMyr: '100.00',
+      monthlyUsedMyr: '50.00',
+      modifiedByMarketContext: false,
+    } as never);
+    expect(view.finalDecision.action).toBe('WAIT');
+    expect(view.finalDecision.modifiedByMarketContext).toBe(false);
+    expect(fetchCount).toBe(before);
+  });
+
   it('sets hasSnapshot false when no market snapshot exists', () => {
     const view = service.toMarketContextView(null);
     expect(view.hasSnapshot).toBe(false);

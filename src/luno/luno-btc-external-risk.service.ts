@@ -15,6 +15,7 @@ import {
 } from './accounting/luno-btc-external-risk';
 import { displayActionFor } from './accounting/luno-btc-decision';
 import { roundMyr } from './accounting/luno-btc-formulas';
+import type { LunoBtcDecisionView } from './luno-btc-decision.service';
 import type { LunoBtcFinalDecisionView } from './luno-btc-market.service';
 import { LunoBtcMarketService } from './luno-btc-market.service';
 import { LunoBtcNewsEvent } from './entities/luno-btc-news-event.entity';
@@ -235,15 +236,12 @@ export class LunoBtcExternalRiskService implements OnModuleInit {
   }
 
   async getExternalRisk(now = new Date()): Promise<LunoBtcExternalRiskView> {
-    await this.refreshIfStaleOrMissing();
-    const snapshot = await this.latestSnapshot(now);
-    return this.toRiskView(snapshot);
+    return this.toRiskView(await this.latestSnapshot(now));
   }
 
   async getExternalRiskEvents(
     now = new Date(),
   ): Promise<LunoBtcExternalRiskEventView[]> {
-    await this.refreshIfStaleOrMissing();
     const [newsRows, economicRows] = await Promise.all([
       this.newsEvents.find({
         order: { publishedAt: 'DESC' },
@@ -294,8 +292,20 @@ export class LunoBtcExternalRiskService implements OnModuleInit {
   }
 
   async getFinalDecision(userId: string): Promise<LunoBtcCombinedDecisionView> {
-    await this.refreshIfStaleOrMissing();
     const phase5 = await this.market.getFinalDecision(userId);
+    return this.applyCachedExternalRisk(phase5);
+  }
+
+  async composeFromCachedDecision(
+    base: LunoBtcDecisionView,
+  ): Promise<LunoBtcCombinedDecisionView> {
+    const phase5 = await this.market.composeFromCachedDecision(base);
+    return this.applyCachedExternalRisk(phase5);
+  }
+
+  private async applyCachedExternalRisk(
+    phase5: LunoBtcFinalDecisionView,
+  ): Promise<LunoBtcCombinedDecisionView> {
     const risk = await this.latestSnapshot();
     const modified = applyExternalRiskModifier(phase5.finalDecision, risk);
     return {

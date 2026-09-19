@@ -42,6 +42,9 @@ export type BtcAccountingDetails = {
 @Injectable()
 export class LunoBtcAccountingService {
   private readonly logger = new Logger(LunoBtcAccountingService.name);
+  private computeMemo: { at: number; details: BtcAccountingDetails } | null =
+    null;
+  private static readonly COMPUTE_MEMO_MS = 5_000;
 
   constructor(
     private readonly api: LunoApiService,
@@ -64,6 +67,7 @@ export class LunoBtcAccountingService {
   ) {}
 
   async rebuildBtcAccounting(): Promise<BtcAccountingDetails> {
+    this.computeMemo = null;
     const details = await this.compute();
     await this.persist(details);
     return details;
@@ -240,6 +244,19 @@ export class LunoBtcAccountingService {
   }
 
   private async compute(): Promise<BtcAccountingDetails> {
+    if (
+      this.computeMemo &&
+      Date.now() - this.computeMemo.at <
+        LunoBtcAccountingService.COMPUTE_MEMO_MS
+    ) {
+      return this.computeMemo.details;
+    }
+    const details = await this.computeFresh();
+    this.computeMemo = { at: Date.now(), details };
+    return details;
+  }
+
+  private async computeFresh(): Promise<BtcAccountingDetails> {
     const storedAccounts = await this.accounts.find();
     const identified = identifyBtcMyrAccounts(
       storedAccounts.map((row) => ({
