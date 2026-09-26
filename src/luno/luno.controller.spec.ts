@@ -5,6 +5,7 @@ import { LunoSyncService } from './luno-sync.service';
 import { LunoBtcAccountingService } from './luno-btc-accounting.service';
 import { LunoBtcBudgetService } from './luno-btc-budget.service';
 import { LunoBtcDecisionService } from './luno-btc-decision.service';
+import { LunoBtcHarvestService } from './luno-btc-harvest.service';
 import { LunoBtcMarketService } from './luno-btc-market.service';
 import { LunoBtcExternalRiskService } from './luno-btc-external-risk.service';
 
@@ -26,6 +27,11 @@ function guardsOn(
     | 'getCurrentDecision'
     | 'getDecisionHistory'
     | 'recalculateDecision'
+    | 'getCurrentHarvest'
+    | 'getHarvestHistory'
+    | 'getHarvestSettings'
+    | 'patchHarvestSettings'
+    | 'recalculateHarvest'
     | 'getMarketContext'
     | 'getFinalDecision'
     | 'getExternalRisk'
@@ -62,6 +68,11 @@ describe('LunoController', () => {
     expect(guardsOn('getCurrentDecision')).toHaveLength(1);
     expect(guardsOn('getDecisionHistory')).toHaveLength(1);
     expect(guardsOn('recalculateDecision')).toHaveLength(1);
+    expect(guardsOn('getCurrentHarvest')).toHaveLength(1);
+    expect(guardsOn('getHarvestHistory')).toHaveLength(1);
+    expect(guardsOn('getHarvestSettings')).toHaveLength(1);
+    expect(guardsOn('patchHarvestSettings')).toHaveLength(1);
+    expect(guardsOn('recalculateHarvest')).toHaveLength(1);
     expect(guardsOn('getMarketContext')).toHaveLength(1);
     expect(guardsOn('getFinalDecision')).toHaveLength(1);
     expect(guardsOn('getExternalRisk')).toHaveLength(1);
@@ -90,6 +101,7 @@ describe('LunoController', () => {
       } as unknown as LunoBtcAccountingService,
       {} as unknown as LunoBtcBudgetService,
       {} as unknown as LunoBtcDecisionService,
+      {} as unknown as LunoBtcHarvestService,
       {} as unknown as LunoBtcMarketService,
       {} as unknown as LunoBtcExternalRiskService,
     );
@@ -138,6 +150,9 @@ describe('LunoController', () => {
         recalculateCurrentBtcDecision,
         recalculateAllForCurrentMonth: jest.fn(),
       } as unknown as LunoBtcDecisionService,
+      {
+        recalculateCurrentHarvest: jest.fn(),
+      } as unknown as LunoBtcHarvestService,
       {
         syncBtcMarketData,
         calculateBtcMarketSnapshot,
@@ -197,6 +212,9 @@ describe('LunoController', () => {
           action: 'WAIT',
         })),
       } as unknown as LunoBtcDecisionService,
+      {
+        recalculateCurrentHarvest: jest.fn(),
+      } as unknown as LunoBtcHarvestService,
       {
         syncBtcMarketData: jest.fn(),
         calculateBtcMarketSnapshot: jest.fn(),

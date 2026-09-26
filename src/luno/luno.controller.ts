@@ -27,8 +27,10 @@ import { LunoSyncService, measureSyncStage } from './luno-sync.service';
 import { LunoBtcAccountingService } from './luno-btc-accounting.service';
 import { LunoBtcBudgetService } from './luno-btc-budget.service';
 import { LunoBtcDecisionService } from './luno-btc-decision.service';
+import { LunoBtcHarvestService } from './luno-btc-harvest.service';
 import { LunoBtcMarketService } from './luno-btc-market.service';
 import { LunoBtcExternalRiskService } from './luno-btc-external-risk.service';
+import { PatchLunoBtcHarvestSettingsDto } from './dto/luno-btc-harvest.dto';
 
 type AuthedRequest = Request & { user?: JwtUser };
 
@@ -50,6 +52,7 @@ export class LunoController {
     private readonly accounting: LunoBtcAccountingService,
     private readonly budget: LunoBtcBudgetService,
     private readonly decision: LunoBtcDecisionService,
+    private readonly harvest: LunoBtcHarvestService,
     private readonly market: LunoBtcMarketService,
     private readonly externalRisk: LunoBtcExternalRiskService,
   ) {}
@@ -107,6 +110,13 @@ export class LunoController {
         );
         decisionMs = decisionTimed.ms;
         decisionUpdated = true;
+        try {
+          await this.harvest.recalculateCurrentHarvest(userId);
+        } catch (error) {
+          this.syncLogger.warn(
+            `Harvest refresh skipped: ${error instanceof Error ? error.message : 'unknown'}`,
+          );
+        }
         try {
           await this.externalRisk.composeFromCachedDecision(
             decisionTimed.value,
@@ -246,6 +256,39 @@ export class LunoController {
   @UseGuards(AuthGuard('jwt'))
   recalculateDecision(@Req() req: AuthedRequest) {
     return this.decision.recalculateCurrentBtcDecision(requireUserId(req));
+  }
+
+  @Get('btc/harvest/current')
+  @UseGuards(AuthGuard('jwt'))
+  getCurrentHarvest(@Req() req: AuthedRequest) {
+    return this.harvest.getCurrentHarvest(requireUserId(req));
+  }
+
+  @Get('btc/harvest/history')
+  @UseGuards(AuthGuard('jwt'))
+  getHarvestHistory(@Req() req: AuthedRequest) {
+    return this.harvest.getHarvestHistory(requireUserId(req));
+  }
+
+  @Get('btc/harvest/settings')
+  @UseGuards(AuthGuard('jwt'))
+  getHarvestSettings(@Req() req: AuthedRequest) {
+    return this.harvest.getSettings(requireUserId(req));
+  }
+
+  @Patch('btc/harvest/settings')
+  @UseGuards(AuthGuard('jwt'))
+  patchHarvestSettings(
+    @Req() req: AuthedRequest,
+    @Body() body: PatchLunoBtcHarvestSettingsDto,
+  ) {
+    return this.harvest.patchSettings(requireUserId(req), body);
+  }
+
+  @Post('btc/harvest/recalculate')
+  @UseGuards(AuthGuard('jwt'))
+  recalculateHarvest(@Req() req: AuthedRequest) {
+    return this.harvest.recalculateCurrentHarvest(requireUserId(req));
   }
 
   @Get('btc/market-context')

@@ -23,7 +23,7 @@ describe('Luno read-only surface', () => {
     );
   });
 
-  it('does not add Luno write endpoints or sell/harvest', () => {
+  it('does not add Luno write, sell, order, or withdraw endpoints', () => {
     const src = [
       'luno-api.service.ts',
       'luno-sync.service.ts',
@@ -38,13 +38,21 @@ describe('Luno read-only surface', () => {
       'accounting/luno-btc-external-risk.ts',
       'luno-btc-external-risk.service.ts',
       'luno.controller.ts',
+      'luno-btc-harvest.service.ts',
     ]
       .map((file) => readFileSync(join(__dirname, file), 'utf8'))
       .join('\n');
-    expect(src).not.toMatch(/\bHARVEST\b/);
-    expect(src).not.toMatch(/\bTAKE SOME PROFIT\b/);
     expect(src).not.toContain('/api/1/marketorder');
     expect(src).not.toContain('/api/1/postorder');
     expect(src).not.toContain('/api/1/send');
+    expect(src).not.toMatch(/btc\/sell\b/);
+    expect(src).not.toMatch(/btc\/order\b/);
+    expect(src).not.toMatch(/btc\/withdraw\b/);
+    const controller = readFileSync(
+      join(__dirname, 'luno.controller.ts'),
+      'utf8',
+    );
+    expect(controller).toContain("Get('btc/harvest/current')");
+    expect(controller).not.toContain("Post('btc/sell");
   });
 });

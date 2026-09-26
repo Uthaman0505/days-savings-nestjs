@@ -77,6 +77,10 @@ export class LunoBtcAccountingService {
     return (await this.compute()).portfolio;
   }
 
+  async getComputeDetails(): Promise<BtcAccountingDetails> {
+    return this.compute();
+  }
+
   /** Phase 3 consumes classified buys; it does not rebuild FIFO. */
   async getSpendContext(): Promise<{
     accountingStatus: BtcPortfolioView['status'];

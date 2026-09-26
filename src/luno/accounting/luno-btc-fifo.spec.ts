@@ -1,5 +1,5 @@
 import { classifyLunoTransactions, attachOrderFees } from './luno-btc-classify';
-import { runFifo } from './luno-btc-fifo';
+import { cloneFifoLots, runFifo } from './luno-btc-fifo';
 import {
   buildPortfolioView,
   remainingBtc,
@@ -97,6 +97,39 @@ describe('Luno BTC FIFO accounting', () => {
     expect(fifo.realisedPnlMyr).toBe('75');
     expect(fifo.principalRecoveredMyr).toBe('325');
     expect(fifo.disposals[0].lotsUsed).toHaveLength(2);
+  });
+
+  it('clones lots without sharing remaining-quantity mutations', () => {
+    const events = classifyLunoTransactions(
+      [
+        tx({
+          id: '1',
+          lunoAccountId: BTC,
+          rowIndex: '1',
+          reference: 'buy-1',
+          currency: 'XBT',
+          kind: 'EXCHANGE',
+          description: 'Bought',
+          balanceDelta: '0.001',
+        }),
+        tx({
+          id: '2',
+          lunoAccountId: MYR,
+          rowIndex: '1',
+          reference: 'buy-1',
+          currency: 'MYR',
+          kind: 'EXCHANGE',
+          description: 'Bought',
+          balanceDelta: '-200',
+        }),
+      ],
+      BTC,
+      MYR,
+    );
+    const fifo = runFifo(events);
+    const cloned = cloneFifoLots(fifo.lots);
+    cloned[0].btcQuantityRemaining = '0';
+    expect(fifo.lots[0].btcQuantityRemaining).toBe('0.001');
   });
 
   it('adds separate MYR fee rows to buy cost and sell net proceeds once', () => {
