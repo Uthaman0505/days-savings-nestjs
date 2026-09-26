@@ -75,6 +75,8 @@ import { LunoBtcMarketSnapshot } from '../luno/entities/luno-btc-market-snapshot
 import { LunoBtcNewsEvent } from '../luno/entities/luno-btc-news-event.entity';
 import { LunoBtcEconomicEvent } from '../luno/entities/luno-btc-economic-event.entity';
 import { LunoBtcNewsRiskSnapshot } from '../luno/entities/luno-btc-news-risk-snapshot.entity';
+import { LunoBtcHarvestSettings } from '../luno/entities/luno-btc-harvest-settings.entity';
+import { LunoBtcHarvestEvent } from '../luno/entities/luno-btc-harvest-event.entity';
 
 export const entities = [
   User,
@@ -147,4 +149,6 @@ export const entities = [
   LunoBtcNewsEvent,
   LunoBtcEconomicEvent,
   LunoBtcNewsRiskSnapshot,
+  LunoBtcHarvestSettings,
+  LunoBtcHarvestEvent,
 ];

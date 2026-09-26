@@ -64,6 +64,16 @@ export class LunoConfigService implements OnModuleInit {
     return raw.replace(/\/$/, '');
   }
 
+  get minHarvestMyr(): string {
+    return this.config.get<string>('LUNO_MIN_HARVEST_MYR')?.trim() || '5';
+  }
+
+  get estimatedSellFeeMyr(): string {
+    return (
+      this.config.get<string>('LUNO_ESTIMATED_SELL_FEE_MYR')?.trim() || '0'
+    );
+  }
+
   basicAuthHeader(): string {
     if (!this.apiKeyId || !this.apiKeySecret) {
       throw new Error('Luno credentials are not configured.');

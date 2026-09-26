@@ -264,6 +264,33 @@ function allocateBuyFunding(
   };
 }
 
+export function cloneFifoLots(lots: FifoLot[]): FifoLot[] {
+  return lots.map((lot) => ({ ...lot }));
+}
+
+export function consumeLotsForPreview(
+  lots: FifoLot[],
+  quantity: string,
+): {
+  uses: DisposalLotUse[];
+  costBasisMyr: string;
+  remainingLots: FifoLot[];
+  warnings: string[];
+} | null {
+  const remainingLots = cloneFifoLots(lots);
+  const warnings: string[] = [];
+  const result = consumeLots(remainingLots, quantity, warnings);
+  if (!result) {
+    return null;
+  }
+  return {
+    uses: result.uses,
+    costBasisMyr: result.costBasisMyr,
+    remainingLots,
+    warnings,
+  };
+}
+
 function consumeLots(
   lots: FifoLot[],
   quantity: string,

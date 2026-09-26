@@ -49,6 +49,12 @@ describe('LunoConfigService', () => {
     });
     expect(service.enabled).toBe(false);
   });
+
+  it('defaults harvest minimum to RM5 and estimated sell fee to 0', () => {
+    const service = config({ LUNO_ENABLED: 'false' });
+    expect(service.minHarvestMyr).toBe('5');
+    expect(service.estimatedSellFeeMyr).toBe('0');
+  });
 });
 
 describe('isAllowedLunoGetPath', () => {
