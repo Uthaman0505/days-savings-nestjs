@@ -183,6 +183,10 @@ export const BTC_DUST_TOLERANCE = '0.00000001';
 
 export type ExcludedAsset = {
   asset: string;
+  /** Present when the row comes from a synced balance. Formula: balance + reserved. */
+  quantity?: string;
+  /** Optional friendly label. Detection does not require this. */
+  displayName?: string;
 };
 
 export type CurrentMonthBuys = {
