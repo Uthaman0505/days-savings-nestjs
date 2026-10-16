@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { identifyBtcMyrAccounts } from './luno-accounts';
+import { detectOtherLunoAssets } from './luno-other-assets';
 import { LunoApiService } from './luno-api.service';
 import { addDecimalStrings, compareDecimal } from './luno-decimal';
 import {
@@ -326,15 +327,17 @@ export class LunoBtcAccountingService {
       identified.btc == null
         ? null
         : addDecimalStrings(identified.btc.balance, identified.btc.reserved);
+    const portfolio = buildPortfolioView({
+      fifo,
+      liveBtcBalance: liveBtc,
+      btcPriceMyr: price,
+      classifiedEvents,
+    });
+    portfolio.excludedAssets = detectOtherLunoAssets(storedAccounts);
     return {
       classifiedEvents,
       fifo,
-      portfolio: buildPortfolioView({
-        fifo,
-        liveBtcBalance: liveBtc,
-        btcPriceMyr: price,
-        classifiedEvents,
-      }),
+      portfolio,
     };
   }
 
