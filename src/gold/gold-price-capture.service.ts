@@ -317,7 +317,7 @@ export class GoldPriceCaptureService {
         screenshot.extractionError = parsed.errorCode;
         screenshot.warnings = parsed.warnings;
         this.logger.warn(
-          `Price screenshot parse failed captureId=${screenshot.captureId} side=${screenshot.side} code=${parsed.errorCode} pipeline=gold-price-capture ocrSnippet="${compactOcrSnippet(text)}"`,
+          `Price screenshot parse failed captureId=${screenshot.captureId} side=${screenshot.side} code=${parsed.errorCode} diagnostics=${parsed.diagnostics.join(',') || 'none'} pipeline=gold-price-capture ocrSnippet="${compactOcrSnippet(text)}"`,
         );
         await this.screenshotsRepo.save(screenshot);
         return;
@@ -336,7 +336,7 @@ export class GoldPriceCaptureService {
       screenshot.extractionError = null;
       screenshot.warnings = warnings.length > 0 ? warnings : null;
       this.logger.log(
-        `[GoldPriceCapture] ${screenshot.side} sourceTimestamp=${parsed.updatedAt?.toISOString() ?? 'none'} sourceMinute=${parsed.updatedAt ? toPublicGoldSourceMinuteKey(parsed.updatedAt) : 'none'} captureId=${screenshot.captureId}`,
+        `[GoldPriceCapture] ${screenshot.side} sourceTimestamp=${parsed.updatedAt?.toISOString() ?? 'none'} sourceMinute=${parsed.updatedAt ? toPublicGoldSourceMinuteKey(parsed.updatedAt) : 'none'} diagnostics=${parsed.diagnostics.join(',') || 'none'} captureId=${screenshot.captureId}`,
       );
       await this.screenshotsRepo.save(screenshot);
     } catch (err) {

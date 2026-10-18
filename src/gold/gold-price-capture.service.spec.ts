@@ -1,12 +1,15 @@
 import { createHash } from 'crypto';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { ObjectStorageService } from '../storage/object-storage.service';
 import {
+  BUY_GAP_ONE_GRAM_OCR_TEXT,
   BUY_GAP_SCREENSHOT_OCR_TEXT,
+  SELL_GAP_ONE_GRAM_OCR_TEXT,
   SELL_GAP_SCREENSHOT_OCR_TEXT,
+  SELL_GAP_SILVER_ONLY_OCR_TEXT,
 } from './extraction/fixtures/public-gold-price-screenshot.fixture';
 import { ImageTextExtractorService } from './extraction/image-text.extractor';
 import { GoldPriceCapture } from './gold-price-capture.entity';
@@ -507,5 +510,78 @@ describe('GoldPriceCaptureService', () => {
     });
     expect(confirmed.status).toBe('CONFIRMED');
     expect(goldService.confirmScreenshotPrice).toHaveBeenCalled();
+  });
+
+  it('confirms the October 2026 1g GAP screenshots as PG SELL 59200 and PG BUY 54200', async () => {
+    ocr.extractTextFromImageBuffer
+      .mockResolvedValueOnce(BUY_GAP_ONE_GRAM_OCR_TEXT)
+      .mockResolvedValueOnce(SELL_GAP_ONE_GRAM_OCR_TEXT);
+
+    await service.uploadScreenshot(
+      'user-a',
+      'cap-1',
+      'BUY',
+      file(PNG_A, 'buy-gap.jpg'),
+    );
+    const uploaded = await service.uploadScreenshot(
+      'user-a',
+      'cap-1',
+      'SELL',
+      file(PNG_B, 'sell-gap.jpg'),
+    );
+
+    expect(uploaded.capture.pgSellPricePerGramCents).toBe(59200);
+    expect(uploaded.capture.pgBuyPricePerGramCents).toBe(54200);
+    expect(uploaded.capture.priceDate).toBe('2026-10-18');
+    expect(uploaded.capture.warnings).not.toContain('PRICE_TIMESTAMPS_DIFFER');
+    expect(uploaded.capture.warnings).not.toContain(
+      'PRICE_TIMESTAMP_NOT_FOUND',
+    );
+    expect(uploaded.capture.status).toBe('READY');
+    expect(uploaded.capture.buyScreenshot?.warnings ?? []).not.toContain(
+      'GOLD_SECTION_NOT_FOUND',
+    );
+
+    const confirmed = await service.confirmCapture('user-a', {
+      capture_id: 'cap-1',
+    });
+    expect(confirmed.status).toBe('CONFIRMED');
+    expect(goldService.confirmScreenshotPrice).toHaveBeenCalledWith(
+      'user-a',
+      expect.objectContaining({
+        priceDate: '2026-10-18',
+        pgSellPricePerGramCents: 59200,
+        pgBuyPricePerGramCents: 54200,
+      }),
+      expect.anything(),
+    );
+  });
+
+  it('logs parser diagnostics without storing them as user warnings', async () => {
+    const warn = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    ocr.extractTextFromImageBuffer.mockResolvedValue(
+      SELL_GAP_SILVER_ONLY_OCR_TEXT,
+    );
+
+    const result = await service.uploadScreenshot(
+      'user-a',
+      'cap-1',
+      'SELL',
+      file(PNG_B, 'sell-gap.jpg'),
+    );
+
+    expect(result.capture.sellScreenshot?.extractionError).toBe(
+      'GOLD_PRICE_NOT_FOUND',
+    );
+    expect(result.capture.pgBuyPricePerGramCents).toBeNull();
+    expect(result.capture.sellScreenshot?.warnings ?? []).not.toContain(
+      'GOLD_SECTION_NOT_FOUND',
+    );
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('diagnostics=GOLD_SECTION_NOT_FOUND'),
+    );
+    warn.mockRestore();
   });
 });

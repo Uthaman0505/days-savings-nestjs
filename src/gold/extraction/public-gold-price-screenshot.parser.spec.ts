@@ -1,8 +1,18 @@
 import {
   BUY_GAP_NOISY_OCR_TEXT,
+  BUY_GAP_ONE_GRAM_COMPACT_OCR_TEXT,
+  BUY_GAP_ONE_GRAM_NOISY_SPACING_OCR_TEXT,
+  BUY_GAP_ONE_GRAM_OCR_TEXT,
+  BUY_GAP_ONE_GRAM_SPLIT_OCR_TEXT,
   BUY_GAP_SCREENSHOT_OCR_TEXT,
+  BUY_GAP_TESSERACT_RAW_OCR_TEXT,
+  BUY_GAP_TESSERACT_RECOVERED_OCR_TEXT,
   BUY_GAP_TWO_COLUMN_OCR_TEXT,
+  SELL_GAP_ONE_GRAM_OCR_TEXT,
   SELL_GAP_SCREENSHOT_OCR_TEXT,
+  SELL_GAP_SILVER_ONLY_OCR_TEXT,
+  SELL_GAP_SLIVER_OCR_TEXT,
+  SELL_GAP_TESSERACT_RECOVERED_OCR_TEXT,
   SELL_GAP_TWO_COLUMN_OCR_TEXT,
 } from './fixtures/public-gold-price-screenshot.fixture';
 import {
@@ -230,5 +240,197 @@ describe('PublicGoldPriceScreenshotParser', () => {
   it('does not treat RM 0.00 totals as the gold price', () => {
     expect(extractGoldPerGramCents(BUY_GAP_SCREENSHOT_OCR_TEXT)).toBe(62500);
     expect(extractGoldPerGramCents(BUY_GAP_SCREENSHOT_OCR_TEXT)).not.toBe(0);
+  });
+
+  it('maps Buy GAP RM 592 = 1.0000 gram to PG SELL 59200 cents', () => {
+    const result = parsePublicGoldPriceScreenshot(BUY_GAP_ONE_GRAM_OCR_TEXT);
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.screenType).toBe('BUY_GAP');
+    expect(result.priceRole).toBe('PG_SELL');
+    expect(result.pgPricePerGramCents).toBe(59200);
+    expect(result.priceDate).toBe('2026-10-18');
+    expect(result.updatedAt?.toISOString()).toBe('2026-10-18T02:03:00.000Z');
+    expect(result.diagnostics).toEqual([]);
+    expect(result.pgPricePerGramCents).not.toBe(10000);
+  });
+
+  it('maps Sell GAP RM 542 = 1.0000 gram to PG BUY 54200 cents', () => {
+    const result = parsePublicGoldPriceScreenshot(SELL_GAP_ONE_GRAM_OCR_TEXT);
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.screenType).toBe('SELL_GAP');
+    expect(result.priceRole).toBe('PG_BUY');
+    expect(result.pgPricePerGramCents).toBe(54200);
+    expect(result.updatedAt?.toISOString()).toBe('2026-10-18T02:03:00.000Z');
+    expect(result.pgPricePerGramCents).not.toBe(844);
+  });
+
+  it('ignores the RM 100 bundle row and every silver row', () => {
+    expect(extractGoldPerGramCents(BUY_GAP_ONE_GRAM_OCR_TEXT)).toBe(59200);
+    expect(extractGoldPerGramCents(BUY_GAP_ONE_GRAM_OCR_TEXT)).not.toBe(10000);
+    expect(extractGoldPerGramCents(BUY_GAP_ONE_GRAM_OCR_TEXT)).not.toBe(92900);
+    expect(extractGoldPerGramCents(SELL_GAP_ONE_GRAM_OCR_TEXT)).toBe(54200);
+    expect(extractGoldPerGramCents(SELL_GAP_ONE_GRAM_OCR_TEXT)).not.toBe(844);
+  });
+
+  it('reads compact, split-line, and noisy spacing 1g gold rows', () => {
+    for (const text of [
+      BUY_GAP_ONE_GRAM_COMPACT_OCR_TEXT,
+      BUY_GAP_ONE_GRAM_SPLIT_OCR_TEXT,
+      BUY_GAP_ONE_GRAM_NOISY_SPACING_OCR_TEXT,
+      BUY_GAP_ONE_GRAM_OCR_TEXT.replace('1.0000 gram', '1.000 gram'),
+      BUY_GAP_ONE_GRAM_OCR_TEXT.replace('1.0000 gram', '1.0000 g'),
+      BUY_GAP_ONE_GRAM_OCR_TEXT.replace('RM 592 = 1.0000 gram', 'RM592=1 gram'),
+    ]) {
+      expect(extractGoldPerGramCents(text)).toBe(59200);
+    }
+  });
+
+  it('parses DD/MM/YYYY Last update timestamps and ignores seconds', () => {
+    const expectedIso = '2026-10-18T02:03:00.000Z';
+    const variants = [
+      'Last update: 18/10/2026 10:03:09 AM',
+      'Last update : 18/10/2026 10:03:09 AM',
+      'Last update 18/10/2026 10:03:09 AM',
+      'Last updated: 18/10/2026 10:03:09 AM',
+      'Last Update: 18/10/2026 10:03:15 AM',
+      'last update: 18/10/2026 10:03:09AM',
+      'Last update: 18/10/2026 10:03 AM',
+      'Last update:\n18/10/2026 10:03:09 AM',
+    ];
+    for (const text of variants) {
+      const ts = extractUpdatedTimestamp(text);
+      expect(ts?.priceDate).toBe('2026-10-18');
+      expect(ts?.updatedAt.toISOString()).toBe(expectedIso);
+      expect(toPublicGoldSourceMinuteKey(ts!.updatedAt)).toBe(
+        '2026-10-18T10:03',
+      );
+    }
+  });
+
+  it('treats 10:03:09 AM and 10:03:15 AM as the same Malaysia source minute', () => {
+    const buy = extractUpdatedTimestamp(BUY_GAP_ONE_GRAM_OCR_TEXT);
+    const sell = extractUpdatedTimestamp(SELL_GAP_ONE_GRAM_OCR_TEXT);
+    const check = compareScreenshotTimestamps(
+      buy?.updatedAt ?? null,
+      sell?.updatedAt ?? null,
+    );
+    expect(check.match).toBe(true);
+    expect(check.warning).toBeNull();
+    expect(check.buyMinute).toBe('2026-10-18T10:03');
+    expect(check.sellMinute).toBe('2026-10-18T10:03');
+  });
+
+  it('does not select silver when the gold card is missing from OCR', () => {
+    expect(extractGoldPerGramCents(SELL_GAP_SILVER_ONLY_OCR_TEXT)).toBeNull();
+    const result = parsePublicGoldPriceScreenshot(
+      SELL_GAP_SILVER_ONLY_OCR_TEXT,
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.errorCode).toBe('GOLD_PRICE_NOT_FOUND');
+    expect(result.diagnostics).toContain('GOLD_SECTION_NOT_FOUND');
+    expect(result.diagnostics).not.toContain('UPDATE_TIME_NOT_FOUND');
+    expect(result.warnings).not.toContain('GOLD_SECTION_NOT_FOUND');
+    expect(result.warnings).not.toContain('AMBIGUOUS_GOLD_PRICE');
+  });
+
+  it('stops the gold block at a misread Sliver header', () => {
+    const result = parsePublicGoldPriceScreenshot(SELL_GAP_SLIVER_OCR_TEXT);
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.priceRole).toBe('PG_BUY');
+    expect(result.pgPricePerGramCents).toBe(54200);
+  });
+
+  it('reports an ambiguous gold 1g row instead of picking one', () => {
+    const text = `
+Buy GAP / SAP
+Gold - GAP (Au 999.9)
+RM 592 = 1.0000 gram
+RM 600 = 1.0000 gram
+Silver - SAP (Ag 999.0)
+RM 8.44 = 1.0000 gram
+Last update: 18/10/2026 10:03:09 AM
+`;
+    const result = parsePublicGoldPriceScreenshot(text);
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.errorCode).toBe('GOLD_PRICE_NOT_FOUND');
+    expect(result.diagnostics).toContain('AMBIGUOUS_GOLD_PRICE');
+    expect(result.warnings).not.toContain('AMBIGUOUS_GOLD_PRICE');
+  });
+
+  it('parses tesseract text recovered from the October 2026 screenshots', () => {
+    const buy = parsePublicGoldPriceScreenshot(
+      BUY_GAP_TESSERACT_RECOVERED_OCR_TEXT,
+    );
+    const sell = parsePublicGoldPriceScreenshot(
+      SELL_GAP_TESSERACT_RECOVERED_OCR_TEXT,
+    );
+    expect(
+      buy.ok &&
+        buy.priceRole === 'PG_SELL' &&
+        buy.pgPricePerGramCents === 59200,
+    ).toBe(true);
+    expect(
+      sell.ok &&
+        sell.priceRole === 'PG_BUY' &&
+        sell.pgPricePerGramCents === 54200,
+    ).toBe(true);
+    if (!buy.ok || !sell.ok) {
+      return;
+    }
+    expect(
+      compareScreenshotTimestamps(buy.updatedAt, sell.updatedAt).match,
+    ).toBe(true);
+  });
+
+  it('does not invent a gold price from raw OCR that only read the silver card', () => {
+    const buy = parsePublicGoldPriceScreenshot(BUY_GAP_TESSERACT_RAW_OCR_TEXT);
+    const sell = parsePublicGoldPriceScreenshot(SELL_GAP_SILVER_ONLY_OCR_TEXT);
+    expect(buy.ok).toBe(false);
+    expect(sell.ok).toBe(false);
+    if (buy.ok || sell.ok) {
+      return;
+    }
+    expect(buy.errorCode).toBe('GOLD_PRICE_NOT_FOUND');
+    expect(sell.errorCode).toBe('GOLD_PRICE_NOT_FOUND');
+    expect(buy.diagnostics).toContain('GOLD_SECTION_NOT_FOUND');
+    expect(sell.diagnostics).toContain('GOLD_SECTION_NOT_FOUND');
+    expect(extractGoldPerGramCents(BUY_GAP_TESSERACT_RAW_OCR_TEXT)).toBeNull();
+    expect(extractGoldPerGramCents(SELL_GAP_SILVER_ONLY_OCR_TEXT)).not.toBe(
+      844,
+    );
+  });
+
+  it('reports a missing 1g row when the gold card only has the RM 100 bundle', () => {
+    const text = `
+Buy GAP / SAP
+Gold - GAP (Au 999.9)
+RM 100 = 0.1689 gram
+Silver - SAP (Ag 999.0)
+RM 8.44 = 1.0000 gram
+Last update: 18/10/2026 10:03:09 AM
+`;
+    const result = parsePublicGoldPriceScreenshot(text);
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.errorCode).toBe('GOLD_PRICE_NOT_FOUND');
+    expect(result.diagnostics).toEqual(['GOLD_ONE_GRAM_PRICE_NOT_FOUND']);
+    expect(extractGoldPerGramCents(text)).toBeNull();
   });
 });
