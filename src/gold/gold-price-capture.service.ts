@@ -22,7 +22,9 @@ import {
   parsePublicGoldPriceScreenshot,
   toPublicGoldSourceMinuteKey,
   validatePriceSpread,
+  type PriceScreenshotParseResult,
 } from './extraction/public-gold-price-screenshot.parser';
+import { preparePublicGoldScreenshotForOcr } from './extraction/public-gold-screenshot-image';
 import { GoldPriceCapture } from './gold-price-capture.entity';
 import {
   GoldPriceScreenshot,
@@ -310,7 +312,10 @@ export class GoldPriceCaptureService {
         `Price screenshot OCR start captureId=${screenshot.captureId} side=${screenshot.side} pipeline=gold-price-capture`,
       );
       const text = await this.ocr.extractTextFromImageBuffer(buffer);
-      const parsed = parsePublicGoldPriceScreenshot(text);
+      let parsed = parsePublicGoldPriceScreenshot(text);
+      if (!parsed.ok && parsed.errorCode === 'GOLD_PRICE_NOT_FOUND') {
+        parsed = await this.retryYellowCardOcr(screenshot, buffer, parsed);
+      }
 
       if (!parsed.ok) {
         screenshot.extractionStatus = 'FAILED';
@@ -348,6 +353,29 @@ export class GoldPriceCaptureService {
       );
       await this.screenshotsRepo.save(screenshot);
     }
+  }
+
+  /**
+   * Second OCR pass after the yellow Gold card is lifted to white.
+   * Keeps the first result when the retry still cannot read a gold price.
+   */
+  private async retryYellowCardOcr(
+    screenshot: GoldPriceScreenshot,
+    buffer: Buffer,
+    first: PriceScreenshotParseResult,
+  ): Promise<PriceScreenshotParseResult> {
+    const prepared = preparePublicGoldScreenshotForOcr(buffer);
+    if (!prepared) {
+      return first;
+    }
+
+    const retryText = await this.ocr.extractTextFromImageBuffer(prepared);
+    const retryParsed = parsePublicGoldPriceScreenshot(retryText);
+    const retryCode = retryParsed.ok ? 'EXTRACTED' : retryParsed.errorCode;
+    this.logger.warn(
+      `Price screenshot OCR retry captureId=${screenshot.captureId} side=${screenshot.side} firstDiagnostics=${first.diagnostics.join(',') || 'none'} retry=${retryCode} diagnostics=${retryParsed.diagnostics.join(',') || 'none'} pipeline=gold-price-capture ocrSnippet="${compactOcrSnippet(retryText)}"`,
+    );
+    return retryParsed.ok ? retryParsed : first;
   }
 
   private async recomputeCapture(captureId: string): Promise<GoldPriceCapture> {
