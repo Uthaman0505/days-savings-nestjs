@@ -2,11 +2,13 @@ import { createHash } from 'crypto';
 import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { encode } from 'jpeg-js';
 import { DataSource } from 'typeorm';
 import { ObjectStorageService } from '../storage/object-storage.service';
 import {
   BUY_GAP_ONE_GRAM_OCR_TEXT,
   BUY_GAP_SCREENSHOT_OCR_TEXT,
+  BUY_GAP_TESSERACT_RAW_OCR_TEXT,
   SELL_GAP_ONE_GRAM_OCR_TEXT,
   SELL_GAP_SCREENSHOT_OCR_TEXT,
   SELL_GAP_SILVER_ONLY_OCR_TEXT,
@@ -583,5 +585,41 @@ describe('GoldPriceCaptureService', () => {
       expect.stringContaining('diagnostics=GOLD_SECTION_NOT_FOUND'),
     );
     warn.mockRestore();
+  });
+
+  it('reads the gold price on a second OCR pass after the yellow card is lifted', async () => {
+    const jpeg = (seed: number) => {
+      const rgba = Buffer.alloc(8 * 8 * 4, 255);
+      rgba[0] = 241;
+      rgba[1] = 217;
+      rgba[2] = 147;
+      rgba[seed] = 180;
+      return Buffer.from(encode({ data: rgba, width: 8, height: 8 }, 80).data);
+    };
+
+    ocr.extractTextFromImageBuffer
+      .mockResolvedValueOnce(BUY_GAP_TESSERACT_RAW_OCR_TEXT)
+      .mockResolvedValueOnce(BUY_GAP_ONE_GRAM_OCR_TEXT)
+      .mockResolvedValueOnce(SELL_GAP_SILVER_ONLY_OCR_TEXT)
+      .mockResolvedValueOnce(SELL_GAP_ONE_GRAM_OCR_TEXT);
+
+    const upload = (buffer: Buffer, side: 'BUY' | 'SELL', name: string) =>
+      service.uploadScreenshot('user-a', 'cap-1', side, {
+        originalname: name,
+        mimetype: 'image/jpeg',
+        size: buffer.length,
+        buffer,
+      });
+
+    await upload(jpeg(10), 'BUY', 'buy.jpg');
+    const uploaded = await upload(jpeg(20), 'SELL', 'sell.jpg');
+
+    expect(ocr.extractTextFromImageBuffer).toHaveBeenCalledTimes(4);
+    expect(uploaded.capture.pgSellPricePerGramCents).toBe(59200);
+    expect(uploaded.capture.pgBuyPricePerGramCents).toBe(54200);
+    expect(uploaded.capture.status).toBe('READY');
+    expect(uploaded.capture.warnings).not.toContain('PRICE_TIMESTAMPS_DIFFER');
+    expect(uploaded.capture.buyScreenshot?.extractionError).toBeNull();
+    expect(uploaded.capture.sellScreenshot?.extractionError).toBeNull();
   });
 });
