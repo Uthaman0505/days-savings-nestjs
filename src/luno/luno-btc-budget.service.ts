@@ -1,6 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, type UpdateQueryBuilder } from 'typeorm';
 import {
   calendarMonthKey,
   monthKeyFromBudgetDate,
@@ -14,6 +14,7 @@ import {
   parseBudgetConfig,
   parsePositiveAmount,
   remainingBudgetMyr,
+  type LunoBtcBudgetConfig,
   type LunoBtcBudgetStatus,
 } from './accounting/luno-btc-budget';
 import { roundBtc, roundMyr } from './accounting/luno-btc-formulas';
@@ -24,7 +25,7 @@ import type {
 } from './dto/luno-btc-budget.dto';
 import { LunoBtcMoneyBucket } from './entities/luno-btc-money-bucket.entity';
 import { LunoBtcMonthlyBudget } from './entities/luno-btc-monthly-budget.entity';
-import { addDecimalStrings } from './luno-decimal';
+import { addDecimalStrings, compareDecimal } from './luno-decimal';
 import { LunoBtcAccountingService } from './luno-btc-accounting.service';
 import { LunoHealthService } from './luno-health.service';
 
@@ -99,27 +100,58 @@ export class LunoBtcBudgetService {
     const month = calendarMonthKey(now);
     const config = parseBudgetConfig(input);
     const budgetMonth = monthStartDate(month);
-    const row = await this.budgets.findOne({
-      where: { userId, budgetMonth },
-    });
-    if (row) {
-      row.monthlyBudgetMyr = config.monthlyBudgetMyr;
-      row.normalBuyAllocationMyr = config.normalBuyAllocationMyr;
-      row.dipReserveAllocationMyr = config.dipReserveAllocationMyr;
-      await this.budgets.save(row);
-    } else {
-      await this.budgets.save(
-        this.budgets.create({
-          userId,
-          budgetMonth,
-          monthlyBudgetMyr: config.monthlyBudgetMyr,
-          normalBuyAllocationMyr: config.normalBuyAllocationMyr,
-          dipReserveAllocationMyr: config.dipReserveAllocationMyr,
-          status: 'ACTIVE',
-        }),
-      );
+    for (let attempt = 1; attempt <= BUDGET_WRITE_ATTEMPTS; attempt += 1) {
+      const row = await this.budgets.findOne({
+        where: { userId, budgetMonth },
+      });
+      if (!row) {
+        try {
+          await this.budgets.save(
+            this.budgets.create({
+              userId,
+              budgetMonth,
+              monthlyBudgetMyr: config.monthlyBudgetMyr,
+              normalBuyAllocationMyr: config.normalBuyAllocationMyr,
+              dipReserveAllocationMyr: config.dipReserveAllocationMyr,
+              status: 'ACTIVE',
+            }),
+          );
+        } catch (error) {
+          if (!isUniqueViolation(error)) {
+            throw error;
+          }
+          const winner = await this.budgets.findOne({
+            where: { userId, budgetMonth },
+          });
+          if (winner && budgetConfigMatches(winner, config)) {
+            return this.buildView(userId, month);
+          }
+          throw budgetWriteConflict();
+        }
+        return this.buildView(userId, month);
+      }
+      if (budgetConfigMatches(row, config)) {
+        return this.buildView(userId, month);
+      }
+      const result = await conditionalBudgetUpdate(
+        this.budgets,
+        row,
+        config,
+      ).execute();
+      if ((result.affected ?? 0) > 0) {
+        return this.buildView(userId, month);
+      }
+      const fresh = await this.budgets.findOne({
+        where: { userId, budgetMonth },
+      });
+      if (fresh && budgetConfigMatches(fresh, config)) {
+        return this.buildView(userId, month);
+      }
+      if (!fresh || !budgetSnapshotMatches(fresh, row)) {
+        throw budgetWriteConflict();
+      }
     }
-    return this.buildView(userId, month);
+    throw budgetWriteConflict();
   }
 
   async getBudgetHistory(userId: string): Promise<LunoBtcBudgetHistoryRow[]> {
@@ -264,4 +296,138 @@ export class LunoBtcBudgetService {
     }
     return { protectedProfitMyr, reinvestmentReserveMyr };
   }
+}
+
+/** Bounded retries apply only while the observed row is unchanged. */
+export const BUDGET_WRITE_ATTEMPTS = 3;
+
+/**
+ * TypeORM 0.3 UpdateQueryBuilder appends `updated_at = CURRENT_TIMESTAMP`
+ * when the payload omits an @UpdateDateColumn. Repeating the existing
+ * timestamp keeps the amount-revision clock still on a sleeve-only edit.
+ */
+export function sleeveOnlyBudgetUpdate(
+  row: Pick<LunoBtcMonthlyBudget, 'updatedAt'>,
+  config: Pick<
+    LunoBtcBudgetConfig,
+    'normalBuyAllocationMyr' | 'dipReserveAllocationMyr'
+  >,
+): Pick<
+  LunoBtcMonthlyBudget,
+  'normalBuyAllocationMyr' | 'dipReserveAllocationMyr' | 'updatedAt'
+> {
+  return {
+    normalBuyAllocationMyr: config.normalBuyAllocationMyr,
+    dipReserveAllocationMyr: config.dipReserveAllocationMyr,
+    updatedAt: row.updatedAt,
+  };
+}
+
+/**
+ * Atomic compare-and-swap. The WHERE clause repeats the observed amount,
+ * both sleeves, and the millisecond amount-revision time. Sleeve edits keep
+ * updated_at, so the timestamp alone cannot separate them. Node dates drop
+ * PostgreSQL microseconds, so the timestamp predicate truncates to
+ * milliseconds. An amount change leaves updated_at out of SET and TypeORM
+ * stamps CURRENT_TIMESTAMP.
+ */
+export function conditionalBudgetUpdate(
+  budgets: Repository<LunoBtcMonthlyBudget>,
+  row: LunoBtcMonthlyBudget,
+  config: LunoBtcBudgetConfig,
+): UpdateQueryBuilder<LunoBtcMonthlyBudget> {
+  const values = sameMoney(row.monthlyBudgetMyr, config.monthlyBudgetMyr)
+    ? sleeveOnlyBudgetUpdate(row, config)
+    : {
+        monthlyBudgetMyr: config.monthlyBudgetMyr,
+        normalBuyAllocationMyr: config.normalBuyAllocationMyr,
+        dipReserveAllocationMyr: config.dipReserveAllocationMyr,
+      };
+  const update = budgets
+    .createQueryBuilder()
+    .update(LunoBtcMonthlyBudget)
+    .set(values)
+    .where('id = :id', { id: row.id })
+    .andWhere(
+      `date_trunc('milliseconds', "updated_at") = :observedUpdatedAt`,
+      { observedUpdatedAt: row.updatedAt },
+    )
+    .andWhere('"monthly_budget_myr" = :observedMonthlyBudgetMyr', {
+      observedMonthlyBudgetMyr: row.monthlyBudgetMyr,
+    });
+  observedMoney(
+    update,
+    '"normal_buy_allocation_myr"',
+    'observedNormal',
+    row.normalBuyAllocationMyr,
+  );
+  observedMoney(
+    update,
+    '"dip_reserve_allocation_myr"',
+    'observedDip',
+    row.dipReserveAllocationMyr,
+  );
+  return update;
+}
+
+function observedMoney(
+  update: UpdateQueryBuilder<LunoBtcMonthlyBudget>,
+  column: string,
+  param: string,
+  value: string | null,
+): void {
+  if (value == null) {
+    update.andWhere(`${column} IS NULL`);
+    return;
+  }
+  update.andWhere(`${column} = :${param}`, { [param]: value });
+}
+
+function budgetConfigMatches(
+  row: LunoBtcMonthlyBudget,
+  config: LunoBtcBudgetConfig,
+): boolean {
+  return (
+    sameMoney(row.monthlyBudgetMyr, config.monthlyBudgetMyr) &&
+    sameMoney(row.normalBuyAllocationMyr, config.normalBuyAllocationMyr) &&
+    sameMoney(row.dipReserveAllocationMyr, config.dipReserveAllocationMyr)
+  );
+}
+
+function budgetSnapshotMatches(
+  left: LunoBtcMonthlyBudget,
+  right: LunoBtcMonthlyBudget,
+): boolean {
+  return (
+    left.updatedAt.getTime() === right.updatedAt.getTime() &&
+    sameMoney(left.monthlyBudgetMyr, right.monthlyBudgetMyr) &&
+    sameMoney(left.normalBuyAllocationMyr, right.normalBuyAllocationMyr) &&
+    sameMoney(left.dipReserveAllocationMyr, right.dipReserveAllocationMyr)
+  );
+}
+
+function budgetWriteConflict(): ConflictException {
+  return new ConflictException(
+    'Monthly budget changed before this save finished. Reload the budget and submit it again.',
+  );
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+  const candidate = error as {
+    code?: string;
+    driverError?: { code?: string };
+  };
+  return (
+    candidate.code === '23505' || candidate.driverError?.code === '23505'
+  );
+}
+
+function sameMoney(left: string | null, right: string | null): boolean {
+  if (left == null || right == null) {
+    return left == null && right == null;
+  }
+  return compareDecimal(left, right) === 0;
 }

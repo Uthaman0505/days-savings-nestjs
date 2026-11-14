@@ -119,18 +119,24 @@ export class LunoBtcDecisionService {
       this.accounting.getSpendContext(),
       this.budget.getCurrentBudget(userId, now),
     ]);
-    const monthEvents = await this.events.find({
-      where: { userId, budgetMonth },
-      order: { triggeredAt: 'ASC' },
-    });
+    const [monthEvents, budgetRow] = await Promise.all([
+      this.events.find({
+        where: { userId, budgetMonth },
+        order: { triggeredAt: 'ASC' },
+      }),
+      this.budgets.findOne({ where: { userId, budgetMonth } }),
+    ]);
     this.expireStaleEvents(monthEvents, budget.remainingMyr, now);
-    this.matchPurchases(monthEvents, spend.classifiedEvents);
+    this.matchPurchases(monthEvents, spend.classifiedEvents, month);
+    // updatedAt is the last monthly-amount save. Sleeve-only saves do not move it.
     this.inferFirstBuyZoneFromPurchases(
       userId,
       budgetMonth,
+      month,
       monthEvents,
       spend.classifiedEvents,
       budget.monthlyBudgetMyr,
+      budgetRow?.updatedAt ?? null,
     );
     const actedZones = monthEvents
       .filter((row) => row.status === 'ACTED' && isBuyZone(row.zone))
@@ -184,12 +190,9 @@ export class LunoBtcDecisionService {
   private matchPurchases(
     rows: LunoBtcStrategyEvent[],
     classified: ClassifiedEvent[],
+    monthKey: string,
   ): void {
-    const usedRefs = new Set(
-      rows
-        .map((row) => row.matchedTransactionRef)
-        .filter((value): value is string => Boolean(value)),
-    );
+    const usedRefs = linkedPurchaseRefs(rows);
     for (const row of rows) {
       if (
         row.status !== 'OPEN' ||
@@ -198,70 +201,56 @@ export class LunoBtcDecisionService {
       ) {
         continue;
       }
-      const match = classified.find((event) => {
-        if (event.classification !== 'BTC_BUY') {
-          return false;
-        }
-        if (event.occurredAt.getTime() < row.triggeredAt.getTime()) {
-          return false;
-        }
-        const ref = event.reference ?? event.sourceTransactionIds[0] ?? '';
-        if (!ref || usedRefs.has(ref)) {
-          return false;
-        }
-        return amountsMatch(buyCashMyr(event), row.suggestedAmountMyr ?? '0');
-      });
+      if (zoneAlreadyActed(rows, row.zone)) {
+        continue;
+      }
+      const match = classified.find((event) =>
+        this.buyCanLink(event, monthKey, row.triggeredAt, usedRefs, null) &&
+        amountsMatch(buyCashMyr(event), row.suggestedAmountMyr ?? '0'),
+      );
       if (!match) {
         continue;
       }
-      const ref = match.reference ?? match.sourceTransactionIds[0] ?? 'matched';
-      row.status = 'ACTED';
-      row.actedAt = match.occurredAt;
-      row.matchedTransactionRef = ref;
-      usedRefs.add(ref);
+      this.linkPurchase(row, match, usedRefs);
     }
   }
 
   private inferFirstBuyZoneFromPurchases(
     userId: string,
     budgetMonth: string,
+    monthKey: string,
     rows: LunoBtcStrategyEvent[],
     classified: ClassifiedEvent[],
     monthlyBudgetMyr: string | null,
+    budgetRevisedAt: Date | null,
   ): void {
     if (monthlyBudgetMyr == null) {
       return;
     }
-    if (
-      rows.some(
-        (row) => row.zone === 'FIRST_BUY_ZONE' && row.status === 'ACTED',
-      )
-    ) {
+    if (zoneAlreadyActed(rows, 'FIRST_BUY_ZONE')) {
       return;
     }
     const target = stagedTargetMyr(monthlyBudgetMyr, 'FIRST_BUY_ZONE');
     if (target == null) {
       return;
     }
-    const usedRefs = new Set(
-      rows
-        .map((row) => row.matchedTransactionRef)
-        .filter((value): value is string => Boolean(value)),
-    );
-    const buy = classified.find((event) => {
-      if (event.classification !== 'BTC_BUY') {
-        return false;
-      }
-      const ref = event.reference ?? event.sourceTransactionIds[0] ?? '';
-      if (ref && usedRefs.has(ref)) {
-        return false;
-      }
-      return amountsMatch(buyCashMyr(event), target);
-    });
+    const usedRefs = linkedPurchaseRefs(rows);
+    const buy = classified
+      .filter(
+        (event) =>
+          this.buyCanLink(event, monthKey, null, usedRefs, budgetRevisedAt) &&
+          amountsMatch(buyCashMyr(event), target),
+      )
+      .sort(
+        (left, right) => left.occurredAt.getTime() - right.occurredAt.getTime(),
+      )[0];
     if (!buy) {
       return;
     }
-    const ref = buy.reference ?? buy.sourceTransactionIds[0] ?? 'inferred';
+    const ref = purchaseRefs(buy)[0];
+    for (const identity of purchaseRefs(buy)) {
+      usedRefs.add(identity);
+    }
     rows.push(
       this.events.create({
         userId,
@@ -285,6 +274,49 @@ export class LunoBtcDecisionService {
         matchedTransactionRef: ref,
       }),
     );
+  }
+
+  private buyCanLink(
+    event: ClassifiedEvent,
+    monthKey: string,
+    notBefore: Date | null,
+    usedRefs: Set<string>,
+    budgetRevisedAt: Date | null,
+  ): boolean {
+    if (event.classification !== 'BTC_BUY') {
+      return false;
+    }
+    if (calendarMonthKey(event.occurredAt) !== monthKey) {
+      return false;
+    }
+    if (notBefore && event.occurredAt.getTime() < notBefore.getTime()) {
+      return false;
+    }
+    if (
+      budgetRevisedAt &&
+      event.occurredAt.getTime() < budgetRevisedAt.getTime()
+    ) {
+      return false;
+    }
+    const refs = purchaseRefs(event);
+    return refs.length > 0 && refs.every((ref) => !usedRefs.has(ref));
+  }
+
+  private linkPurchase(
+    row: LunoBtcStrategyEvent,
+    match: ClassifiedEvent,
+    usedRefs: Set<string>,
+  ): void {
+    if (row.status === 'ACTED') {
+      return;
+    }
+    const refs = purchaseRefs(match);
+    row.status = 'ACTED';
+    row.actedAt = match.occurredAt;
+    row.matchedTransactionRef = refs[0] ?? null;
+    for (const ref of refs) {
+      usedRefs.add(ref);
+    }
   }
 
   private async persistDecision(
@@ -437,4 +469,32 @@ function remainingSleevesFromEvents(
 
 function maxZero(value: string): string {
   return compareDecimal(value, '0') < 0 ? '0' : value;
+}
+
+function zoneAlreadyActed(
+  rows: LunoBtcStrategyEvent[],
+  zone: LunoBtcStrategyEvent['zone'],
+): boolean {
+  return rows.some((row) => row.status === 'ACTED' && row.zone === zone);
+}
+
+function linkedPurchaseRefs(rows: LunoBtcStrategyEvent[]): Set<string> {
+  return new Set(
+    rows
+      .map((row) => row.matchedTransactionRef)
+      .filter((value): value is string => Boolean(value)),
+  );
+}
+
+function purchaseRefs(event: ClassifiedEvent): string[] {
+  const refs: string[] = [];
+  if (event.reference) {
+    refs.push(event.reference);
+  }
+  for (const id of event.sourceTransactionIds ?? []) {
+    if (id && !refs.includes(id)) {
+      refs.push(id);
+    }
+  }
+  return refs;
 }

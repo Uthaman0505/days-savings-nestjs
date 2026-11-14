@@ -3,7 +3,9 @@ import {
   calendarMonthKey,
   collectExcludedAssets,
   summarizeCurrentMonthBuys,
+  summarizeMonthBuys,
 } from './luno-btc-activity';
+import type { ClassifiedEvent } from './luno-btc.types';
 import type { SourceTx } from './luno-btc.types';
 
 function tx(
@@ -101,6 +103,31 @@ describe('Luno BTC activity helpers', () => {
     expect(month.btcReceived).toBe('0.00015637');
     expect(month.latestBuyAt).toBe('2026-09-16T00:00:00.000Z');
     expect(month.month).toBe('2026-09');
+  });
+
+  it('counts an unmatched RM12 buy against the current month', () => {
+    const buy: ClassifiedEvent = {
+      classification: 'BTC_BUY',
+      occurredAt: new Date('2026-11-09T02:00:00.000Z'),
+      reference: 'rm-12',
+      sourceTransactionIds: ['rm-12'],
+      btcQuantity: '0.00003',
+      btcDirection: 'IN',
+      myrAmount: '12',
+      feeMyr: '0',
+      feeMyrReported: '0',
+      feeBtc: null,
+      feeStatus: 'EXACT',
+      feeSource: 'INSTANT_DETAILS',
+      feeTreatment: 'EMBEDDED',
+      tradeChannel: 'INSTANT',
+      derivationNote: null,
+      warning: null,
+      excludedAsset: null,
+    };
+    const month = summarizeMonthBuys([buy], '2026-11');
+    expect(month.purchaseTotalMyr).toBe('12');
+    expect(month.buyCount).toBe(1);
   });
 
   it('uses Asia/Kuala_Lumpur for first day, last day, and UTC rollover', () => {

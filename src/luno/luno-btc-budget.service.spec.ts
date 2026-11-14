@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import type { ClassifiedEvent } from './accounting/luno-btc.types';
@@ -9,6 +9,25 @@ import { LunoBtcBudgetService } from './luno-btc-budget.service';
 import { LunoHealthService } from './luno-health.service';
 
 const NOW = new Date('2026-09-16T12:00:00.000Z');
+
+function copyBudget(
+  row: LunoBtcMonthlyBudget | undefined,
+): LunoBtcMonthlyBudget | null {
+  if (!row) {
+    return null;
+  }
+  return { ...row, updatedAt: new Date(row.updatedAt) };
+}
+
+function moneyEqual(
+  left: string | null | undefined,
+  right: string | null | undefined,
+): boolean {
+  if (left == null || right == null) {
+    return left == null && right == null;
+  }
+  return Number(left) === Number(right);
+}
 
 function buy(partial: {
   occurredAt: Date;
@@ -56,16 +75,20 @@ describe('LunoBtcBudgetService', () => {
   let events: ClassifiedEvent[] = [];
   let accountingStatus: 'READY' | 'PARTIAL' = 'READY';
   let myrAvailable = '14.37';
+  let saveClock = NOW;
+  let beforeConditionalUpdate: (() => void) | null = null;
   let service: LunoBtcBudgetService;
 
   const budgetsRepo = {
     findOne: jest.fn(
       async ({ where }: { where: { userId: string; budgetMonth: string } }) =>
-        budgetRows.find(
-          (row) =>
-            row.userId === where.userId &&
-            row.budgetMonth === where.budgetMonth,
-        ) ?? null,
+        copyBudget(
+          budgetRows.find(
+            (row) =>
+              row.userId === where.userId &&
+              row.budgetMonth === where.budgetMonth,
+          ),
+        ),
     ),
     find: jest.fn(async ({ where }: { where: { userId: string } }) =>
       budgetRows
@@ -75,11 +98,11 @@ describe('LunoBtcBudgetService', () => {
     create: jest.fn((row: Partial<LunoBtcMonthlyBudget>) => row),
     save: jest.fn(async (row: LunoBtcMonthlyBudget) => {
       const saved = {
-        id: row.id ?? `b-${budgetRows.length + 1}`,
-        status: 'ACTIVE',
-        createdAt: NOW,
-        updatedAt: NOW,
         ...row,
+        id: row.id ?? `b-${budgetRows.length + 1}`,
+        status: row.status ?? 'ACTIVE',
+        createdAt: row.createdAt ?? saveClock,
+        updatedAt: saveClock,
       } as LunoBtcMonthlyBudget;
       const index = budgetRows.findIndex(
         (item) =>
@@ -92,6 +115,77 @@ describe('LunoBtcBudgetService', () => {
         budgetRows.push(saved);
       }
       return saved;
+    }),
+    update: jest.fn(async (id: string, partial: Partial<LunoBtcMonthlyBudget>) => {
+      const row = budgetRows.find((item) => item.id === id);
+      if (!row) {
+        return { affected: 0 };
+      }
+      Object.assign(row, partial);
+      if (partial.updatedAt === undefined) {
+        row.updatedAt = saveClock;
+      }
+      return { affected: 1 };
+    }),
+    createQueryBuilder: jest.fn(() => {
+      const clauses: Array<{ sql: string; params?: Record<string, unknown> }> =
+        [];
+      let values: Partial<LunoBtcMonthlyBudget> = {};
+      const builder = {
+        update: () => builder,
+        set: (next: Partial<LunoBtcMonthlyBudget>) => {
+          values = next;
+          return builder;
+        },
+        where: (sql: string, params?: Record<string, unknown>) => {
+          clauses.push({ sql, params });
+          return builder;
+        },
+        andWhere: (sql: string, params?: Record<string, unknown>) => {
+          clauses.push({ sql, params });
+          return builder;
+        },
+        execute: async () => {
+          beforeConditionalUpdate?.();
+          const params = Object.assign(
+            {},
+            ...clauses.map((clause) => clause.params ?? {}),
+          ) as {
+            id?: string;
+            observedUpdatedAt?: Date;
+            observedMonthlyBudgetMyr?: string;
+            observedNormal?: string;
+            observedDip?: string;
+          };
+          const row = budgetRows.find((item) => item.id === params.id);
+          if (!row || !params.observedUpdatedAt) {
+            return { affected: 0 };
+          }
+          const sql = clauses.map((clause) => clause.sql).join('\n');
+          const normalMatches = sql.includes(
+            '"normal_buy_allocation_myr" IS NULL',
+          )
+            ? row.normalBuyAllocationMyr == null
+            : moneyEqual(row.normalBuyAllocationMyr, params.observedNormal);
+          const dipMatches = sql.includes('"dip_reserve_allocation_myr" IS NULL')
+            ? row.dipReserveAllocationMyr == null
+            : moneyEqual(row.dipReserveAllocationMyr, params.observedDip);
+          const matches =
+            row.updatedAt.getTime() === params.observedUpdatedAt.getTime() &&
+            moneyEqual(row.monthlyBudgetMyr, params.observedMonthlyBudgetMyr) &&
+            normalMatches &&
+            dipMatches;
+          if (!matches) {
+            return { affected: 0 };
+          }
+          Object.assign(row, values);
+          if (values.updatedAt === undefined) {
+            row.updatedAt = saveClock;
+          }
+          return { affected: 1 };
+        },
+      };
+      return builder;
     }),
   };
 
@@ -114,6 +208,8 @@ describe('LunoBtcBudgetService', () => {
   beforeEach(async () => {
     budgetRows.length = 0;
     bucketRows.length = 0;
+    saveClock = NOW;
+    beforeConditionalUpdate = null;
     accountingStatus = 'READY';
     myrAvailable = '14.37';
     events = [
@@ -338,6 +434,80 @@ describe('LunoBtcBudgetService', () => {
     expect(
       (await service.getStrategyContext('user-a', NOW)).strategyMoneyReady,
     ).toBe(false);
+  });
+
+  it('keeps the amount-revision clock when only the sleeves change', async () => {
+    const amountSavedAt = new Date('2026-11-02T02:00:00.000Z');
+    saveClock = amountSavedAt;
+    await service.upsertCurrentBudget(
+      'user-a',
+      { monthlyBudgetMyr: '100' },
+      new Date('2026-11-02T02:00:00.000Z'),
+    );
+    saveClock = new Date('2026-11-06T02:00:00.000Z');
+    await service.upsertCurrentBudget(
+      'user-a',
+      {
+        monthlyBudgetMyr: '100.00',
+        normalBuyAllocationMyr: '50',
+        dipReserveAllocationMyr: '40',
+      },
+      new Date('2026-11-06T02:00:00.000Z'),
+    );
+    expect(budgetRows[0].updatedAt).toEqual(amountSavedAt);
+    expect(budgetsRepo.createQueryBuilder).toHaveBeenCalled();
+    expect(budgetRows[0].normalBuyAllocationMyr).toBe('50');
+    expect(budgetRows[0].dipReserveAllocationMyr).toBe('40');
+    expect(budgetRows[0].monthlyBudgetMyr).toBe('100');
+  });
+
+  it('moves the amount-revision clock when the monthly amount changes', async () => {
+    saveClock = new Date('2026-11-02T02:00:00.000Z');
+    await service.upsertCurrentBudget(
+      'user-a',
+      { monthlyBudgetMyr: '100' },
+      new Date('2026-11-02T02:00:00.000Z'),
+    );
+    const revisedAt = new Date('2026-11-06T02:00:00.000Z');
+    saveClock = revisedAt;
+    await service.upsertCurrentBudget(
+      'user-a',
+      { monthlyBudgetMyr: '200', normalBuyAllocationMyr: '80' },
+      new Date('2026-11-06T02:00:00.000Z'),
+    );
+    expect(budgetRows[0].updatedAt).toEqual(revisedAt);
+    expect(budgetRows[0].monthlyBudgetMyr).toBe('200');
+    expect(budgetRows[0].normalBuyAllocationMyr).toBe('80');
+  });
+
+  it('rejects a sleeve write after the monthly amount has changed', async () => {
+    const amountSavedAt = new Date('2026-11-02T02:00:00.000Z');
+    saveClock = amountSavedAt;
+    await service.upsertCurrentBudget(
+      'user-a',
+      { monthlyBudgetMyr: '100' },
+      new Date('2026-11-02T02:00:00.000Z'),
+    );
+    const revisedAt = new Date('2026-11-06T02:00:00.000Z');
+    beforeConditionalUpdate = () => {
+      budgetRows[0].monthlyBudgetMyr = '200';
+      budgetRows[0].updatedAt = revisedAt;
+    };
+    await expect(
+      service.upsertCurrentBudget(
+        'user-a',
+        {
+          monthlyBudgetMyr: '100',
+          normalBuyAllocationMyr: '50',
+          dipReserveAllocationMyr: '40',
+        },
+        new Date('2026-11-09T02:00:00.000Z'),
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(budgetRows[0].monthlyBudgetMyr).toBe('200');
+    expect(budgetRows[0].updatedAt).toEqual(revisedAt);
+    expect(budgetRows[0].normalBuyAllocationMyr).toBeNull();
+    expect(budgetRows[0].dipReserveAllocationMyr).toBeNull();
   });
 
   it('rejects allocation that exceeds monthly budget', async () => {

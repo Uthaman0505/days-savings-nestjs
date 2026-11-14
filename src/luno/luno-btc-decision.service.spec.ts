@@ -43,6 +43,8 @@ describe('LunoBtcDecisionService', () => {
   let used = '50.00';
   let status: 'READY' | 'PARTIAL' = 'READY';
   let classified: ClassifiedEvent[] = [];
+  let monthlyBudget = '100.00';
+  let budgetUpdatedAt: Date | null = null;
 
   const eventsRepo = {
     find: jest.fn(async ({ where }: { where: Record<string, unknown> }) =>
@@ -90,6 +92,8 @@ describe('LunoBtcDecisionService', () => {
     price = '309000';
     remaining = '50.00';
     used = '50.00';
+    monthlyBudget = '100.00';
+    budgetUpdatedAt = null;
     status = 'READY';
     classified = [
       buy({
@@ -112,7 +116,19 @@ describe('LunoBtcDecisionService', () => {
         },
         {
           provide: getRepositoryToken(LunoBtcMonthlyBudget),
-          useValue: { find: jest.fn(async () => []) },
+          useValue: {
+            find: jest.fn(async () => []),
+            findOne: jest.fn(async () =>
+              budgetUpdatedAt
+                ? {
+                    userId: 'user-a',
+                    budgetMonth: '2026-09-01',
+                    monthlyBudgetMyr: monthlyBudget,
+                    updatedAt: budgetUpdatedAt,
+                  }
+                : null,
+            ),
+          },
         },
         {
           provide: LunoBtcAccountingService,
@@ -137,7 +153,7 @@ describe('LunoBtcDecisionService', () => {
           useValue: {
             getCurrentBudget: async () => ({
               month: '2026-09',
-              monthlyBudgetMyr: '100.00',
+              monthlyBudgetMyr: monthlyBudget,
               usedMyr: used,
               remainingMyr: remaining,
               maxAllowedNewSpendMyr: remaining,
@@ -287,5 +303,212 @@ describe('LunoBtcDecisionService', () => {
         (row) => row.action === 'BUY_SMALL' && row.status === 'EXPIRED',
       ),
     ).toBe(true);
+  });
+
+  it('does not let an October purchase lock November', async () => {
+    classified = [
+      buy({
+        occurredAt: new Date('2026-10-15T04:00:00.000Z'),
+        myrAmount: '20',
+        reference: 'oct-20',
+      }),
+    ];
+    const decision = await service.recalculateCurrentBtcDecision(
+      'user-a',
+      new Date('2026-11-09T04:00:00.000Z'),
+    );
+    expect(decision.action).toBe('BUY_SMALL');
+    expect(eventRows.some((row) => row.status === 'ACTED')).toBe(false);
+  });
+
+  it('respects the Kuala Lumpur month boundary around midnight', async () => {
+    classified = [
+      buy({
+        occurredAt: new Date('2026-10-31T15:30:00.000Z'),
+        myrAmount: '20',
+        reference: 'still-october',
+      }),
+    ];
+    const beforeMidnight = await service.recalculateCurrentBtcDecision(
+      'user-a',
+      new Date('2026-11-01T01:00:00.000Z'),
+    );
+    expect(beforeMidnight.action).toBe('BUY_SMALL');
+    expect(eventRows.some((row) => row.status === 'ACTED')).toBe(false);
+
+    eventRows.length = 0;
+    classified = [
+      buy({
+        occurredAt: new Date('2026-10-31T16:30:00.000Z'),
+        myrAmount: '20',
+        reference: 'now-november',
+      }),
+    ];
+    const afterMidnight = await service.recalculateCurrentBtcDecision(
+      'user-a',
+      new Date('2026-11-01T01:00:00.000Z'),
+    );
+    expect(afterMidnight.action).toBe('WAIT');
+    expect(
+      eventRows.filter(
+        (row) => row.status === 'ACTED' && row.zone === 'FIRST_BUY_ZONE',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('does not match a RM12 buy to a stored RM20 recommendation', async () => {
+    classified = [];
+    await service.recalculateCurrentBtcDecision('user-a', NOW);
+    classified = [
+      buy({
+        occurredAt: new Date('2026-09-16T13:00:00.000Z'),
+        myrAmount: '12',
+        reference: 'rm-12',
+      }),
+    ];
+    used = '12.00';
+    remaining = '88.00';
+    const decision = await service.recalculateCurrentBtcDecision(
+      'user-a',
+      new Date('2026-09-16T14:00:00.000Z'),
+    );
+    expect(eventRows.some((row) => row.status === 'ACTED')).toBe(false);
+    expect(decision.action).toBe('BUY_SMALL');
+    expect(decision.monthlyUsedMyr).toBe('12.00');
+    expect(decision.monthlyRemainingMyr).toBe('88.00');
+  });
+
+  it('links the earliest current-month purchase once across recalculations', async () => {
+    classified = [
+      buy({
+        occurredAt: new Date('2026-09-12T02:00:00.000Z'),
+        myrAmount: '20',
+        reference: 'later-20',
+      }),
+      buy({
+        occurredAt: new Date('2026-09-10T02:00:00.000Z'),
+        myrAmount: '20',
+        reference: 'early-20',
+      }),
+    ];
+    await service.recalculateCurrentBtcDecision('user-a', NOW);
+    await service.recalculateCurrentBtcDecision('user-a', NOW);
+    const acted = eventRows.filter(
+      (row) => row.status === 'ACTED' && row.zone === 'FIRST_BUY_ZONE',
+    );
+    expect(acted).toHaveLength(1);
+    expect(acted[0].matchedTransactionRef).toBe('early-20');
+  });
+
+  it('does not link one purchase identity to two acted events', async () => {
+    const first = buy({
+      occurredAt: new Date('2026-09-10T02:00:00.000Z'),
+      myrAmount: '20',
+      reference: 'ref-a',
+    });
+    first.sourceTransactionIds = ['shared-tx'];
+    const second = buy({
+      occurredAt: new Date('2026-09-12T02:00:00.000Z'),
+      myrAmount: '20',
+      reference: 'ref-b',
+    });
+    second.sourceTransactionIds = ['shared-tx'];
+    classified = [first, second];
+    await service.recalculateCurrentBtcDecision('user-a', NOW);
+    await service.recalculateCurrentBtcDecision('user-a', NOW);
+    const acted = eventRows.filter((row) => row.status === 'ACTED');
+    expect(acted).toHaveLength(1);
+    expect(acted[0].matchedTransactionRef).toBe('ref-a');
+  });
+
+  it('locks a 4 Nov RM20 buy when the amount revision stays on 2 Nov', async () => {
+    monthlyBudget = '100.00';
+    budgetUpdatedAt = new Date('2026-11-02T02:00:00.000Z');
+    classified = [
+      buy({
+        occurredAt: new Date('2026-11-04T02:00:00.000Z'),
+        myrAmount: '20',
+        reference: 'nov-20',
+      }),
+    ];
+    const decision = await service.recalculateCurrentBtcDecision(
+      'user-a',
+      new Date('2026-11-09T04:00:00.000Z'),
+    );
+    expect(decision.action).toBe('WAIT');
+    const acted = eventRows.filter((row) => row.status === 'ACTED');
+    expect(acted).toHaveLength(1);
+    expect(acted[0].matchedTransactionRef).toBe('nov-20');
+    expect(acted[0].suggestedAmountMyr).toBe('20');
+  });
+
+  it('does not invent an identity for a buy with no reference or source id', async () => {
+    const anonymous = buy({
+      occurredAt: new Date('2026-11-04T02:00:00.000Z'),
+      myrAmount: '20',
+      reference: 'unused',
+    });
+    anonymous.reference = null;
+    anonymous.sourceTransactionIds = [];
+    classified = [anonymous];
+    used = '20.00';
+    remaining = '80.00';
+    const decision = await service.recalculateCurrentBtcDecision(
+      'user-a',
+      new Date('2026-11-09T04:00:00.000Z'),
+    );
+    expect(eventRows.some((row) => row.status === 'ACTED')).toBe(false);
+    expect(decision.action).toBe('BUY_SMALL');
+    expect(decision.monthlyUsedMyr).toBe('20.00');
+    expect(decision.monthlyRemainingMyr).toBe('80.00');
+  });
+
+  it('does not infer a lock from a buy that predates the current budget revision', async () => {
+    monthlyBudget = '200.00';
+    budgetUpdatedAt = new Date('2026-09-18T00:00:00.000Z');
+    classified = [
+      buy({
+        occurredAt: new Date('2026-09-14T02:00:00.000Z'),
+        myrAmount: '40',
+        reference: 'before-revision',
+      }),
+    ];
+    const decision = await service.recalculateCurrentBtcDecision(
+      'user-a',
+      new Date('2026-09-20T02:00:00.000Z'),
+    );
+    expect(eventRows.some((row) => row.status === 'ACTED')).toBe(false);
+    expect(decision.action).toBe('BUY_SMALL');
+    expect(decision.suggestedAmountMyr).toBe('40.00');
+  });
+
+  it('keeps an acted association after the budget changes', async () => {
+    budgetUpdatedAt = new Date('2026-09-01T00:00:00.000Z');
+    classified = [
+      buy({
+        occurredAt: new Date('2026-09-10T02:00:00.000Z'),
+        myrAmount: '20',
+        reference: 'kept-20',
+      }),
+    ];
+    await service.recalculateCurrentBtcDecision('user-a', NOW);
+    monthlyBudget = '200.00';
+    budgetUpdatedAt = new Date('2026-09-18T00:00:00.000Z');
+    classified = [
+      ...classified,
+      buy({
+        occurredAt: new Date('2026-09-14T02:00:00.000Z'),
+        myrAmount: '40',
+        reference: 'older-40',
+      }),
+    ];
+    await service.recalculateCurrentBtcDecision(
+      'user-a',
+      new Date('2026-09-20T02:00:00.000Z'),
+    );
+    const acted = eventRows.filter((row) => row.status === 'ACTED');
+    expect(acted).toHaveLength(1);
+    expect(acted[0].matchedTransactionRef).toBe('kept-20');
+    expect(acted[0].suggestedAmountMyr).toBe('20');
   });
 });

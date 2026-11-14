@@ -162,10 +162,15 @@ describe('Luno BTC buy decision', () => {
     expect(buy.topUpNeededMyr).toBe('5.63');
   });
 
-  it('matches purchase amounts with a small fee-safe tolerance', () => {
+  it('matches purchase amounts within 15% of the stored recommendation', () => {
     expect(amountsMatch('20', '20')).toBe(true);
     expect(amountsMatch('20.40', '20')).toBe(true);
+    expect(amountsMatch('23', '20')).toBe(true);
+    expect(amountsMatch('17', '20')).toBe(true);
+    expect(amountsMatch('12', '20')).toBe(false);
+    expect(amountsMatch('12', '10')).toBe(false);
     expect(amountsMatch('50', '20')).toBe(false);
+    expect(amountsMatch('6', '4')).toBe(false);
     expect(stagedTargetMyr('100', 'FIRST_BUY_ZONE')).toBe('20');
   });
 });

@@ -22,8 +22,7 @@ export const DECISION_TTL_MS = 24 * 60 * 60 * 1000;
 export const FIRST_BUY_FRACTION = '0.20';
 export const STRONGER_BUY_FRACTION = '0.30';
 export const DEEPER_BUY_FRACTION = '0.40';
-const MATCH_ABS_TOLERANCE_MYR = '2';
-const MATCH_PCT_TOLERANCE = '15';
+export const PURCHASE_MATCH_PCT_TOLERANCE = '15';
 
 export type BuyDecisionInput = {
   accountingStatus: string;
@@ -271,19 +270,18 @@ export function buyCashMyr(event: ClassifiedEvent): string {
 }
 
 export function amountsMatch(actualMyr: string, suggestedMyr: string): boolean {
-  const diff = absDecimal(subtractDecimalStrings(actualMyr, suggestedMyr));
-  if (compareDecimal(diff, MATCH_ABS_TOLERANCE_MYR) <= 0) {
-    return true;
-  }
   if (isZeroDecimal(suggestedMyr)) {
     return false;
   }
+  const diff = absDecimal(subtractDecimalStrings(actualMyr, suggestedMyr));
   const pct = divideDecimalStrings(
     multiplyDecimalStrings(diff, '100'),
     suggestedMyr,
     8,
   );
-  return pct != null && compareDecimal(pct, MATCH_PCT_TOLERANCE) <= 0;
+  return (
+    pct != null && compareDecimal(pct, PURCHASE_MATCH_PCT_TOLERANCE) <= 0
+  );
 }
 
 export function stagedTargetMyr(
