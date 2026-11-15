@@ -204,9 +204,10 @@ export class LunoBtcDecisionService {
       if (zoneAlreadyActed(rows, row.zone)) {
         continue;
       }
-      const match = classified.find((event) =>
-        this.buyCanLink(event, monthKey, row.triggeredAt, usedRefs, null) &&
-        amountsMatch(buyCashMyr(event), row.suggestedAmountMyr ?? '0'),
+      const match = classified.find(
+        (event) =>
+          this.buyCanLink(event, monthKey, row.triggeredAt, usedRefs, null) &&
+          amountsMatch(buyCashMyr(event), row.suggestedAmountMyr ?? '0'),
       );
       if (!match) {
         continue;

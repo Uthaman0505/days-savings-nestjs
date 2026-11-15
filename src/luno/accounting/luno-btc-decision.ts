@@ -293,9 +293,7 @@ export function amountsMatch(actualMyr: string, suggestedMyr: string): boolean {
     suggestedMyr,
     8,
   );
-  return (
-    pct != null && compareDecimal(pct, PURCHASE_MATCH_PCT_TOLERANCE) <= 0
-  );
+  return pct != null && compareDecimal(pct, PURCHASE_MATCH_PCT_TOLERANCE) <= 0;
 }
 
 export function stagedTargetMyr(

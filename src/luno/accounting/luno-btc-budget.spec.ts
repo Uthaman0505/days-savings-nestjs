@@ -50,9 +50,9 @@ describe('Luno BTC budget formulas', () => {
 
   it('accepts RM0 and the staged budget examples', () => {
     for (const amount of ['0', '0.00', '20', '50', '100', '200']) {
-      expect(parseBudgetConfig({ monthlyBudgetMyr: amount }).monthlyBudgetMyr).toBe(
-        amount,
-      );
+      expect(
+        parseBudgetConfig({ monthlyBudgetMyr: amount }).monthlyBudgetMyr,
+      ).toBe(amount);
     }
   });
 
