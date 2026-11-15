@@ -1,7 +1,10 @@
 import { readFileSync } from 'fs';
-import os from 'os';
 import { join } from 'path';
-import { DataSource } from 'typeorm';
+import {
+  dropDisposableDatabase,
+  lunoTestDataSource,
+  recreateDisposableDatabase,
+} from '../luno-test-postgres';
 
 const PROBE = `luno_v2a_p2_migration_${process.pid}`;
 
@@ -13,39 +16,22 @@ function statements(sql: string): string[] {
 }
 
 describe('005 monthly budget allows RM0', () => {
-  const admin = new DataSource({
-    type: 'postgres',
-    host: '127.0.0.1',
-    port: 5432,
-    username: os.userInfo().username,
-    database: 'postgres',
-  });
+  const admin = lunoTestDataSource('postgres');
 
   beforeAll(async () => {
     await admin.initialize();
-    await admin.query(`DROP DATABASE IF EXISTS ${PROBE}`);
-    await admin.query(`CREATE DATABASE ${PROBE}`);
+    await recreateDisposableDatabase(admin, PROBE);
   });
 
   afterAll(async () => {
     if (admin.isInitialized) {
-      await admin.query(
-        `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
-        [PROBE],
-      );
-      await admin.query(`DROP DATABASE IF EXISTS "${PROBE}"`);
+      await dropDisposableDatabase(admin, PROBE);
       await admin.destroy();
     }
   });
 
   it('keeps existing rows and unrelated checks while accepting RM0', async () => {
-    const db = new DataSource({
-      type: 'postgres',
-      host: '127.0.0.1',
-      port: 5432,
-      username: os.userInfo().username,
-      database: PROBE,
-    });
+    const db = lunoTestDataSource(PROBE);
     await db.initialize();
     try {
       await db.query(`CREATE TABLE users (id UUID PRIMARY KEY)`);
