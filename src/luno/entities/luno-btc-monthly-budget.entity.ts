@@ -1,4 +1,5 @@
 import {
+  Check,
   Column,
   CreateDateColumn,
   Entity,
@@ -12,6 +13,7 @@ import {
 import { User } from '../../user/user.entity';
 
 @Entity('luno_btc_monthly_budgets')
+@Check('chk_luno_btc_monthly_budgets_nonnegative', '"monthly_budget_myr" >= 0')
 @Unique('uq_luno_btc_monthly_budgets_user_month', ['userId', 'budgetMonth'])
 @Index('idx_luno_btc_monthly_budgets_user_id', ['userId'])
 @Index('idx_luno_btc_monthly_budgets_user_month', ['userId', 'budgetMonth'])

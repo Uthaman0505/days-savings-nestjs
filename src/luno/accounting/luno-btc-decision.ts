@@ -125,9 +125,17 @@ export function evaluateBtcBuyDecision(input: BuyDecisionInput): BuyDecision {
     return blocked(input, used, maxAllowed, 'BTC accounting is not ready.');
   }
   if (input.monthlyBudgetMyr == null || input.monthlyRemainingMyr == null) {
-    return blocked(input, used, maxAllowed, 'Set your monthly BTC budget.');
+    return blocked(
+      input,
+      used,
+      maxAllowed,
+      "Confirm this month's BTC budget before buying advice.",
+    );
   }
   if (compareDecimal(input.monthlyRemainingMyr, '0') <= 0) {
+    const confirmedZero = compareDecimal(input.monthlyBudgetMyr, '0') === 0;
+    const spentMoreThanBudget =
+      compareDecimal(used, input.monthlyBudgetMyr) > 0;
     return {
       ...base(input, used, maxAllowed),
       action: 'STOP_BUYING_THIS_MONTH',
@@ -137,7 +145,13 @@ export function evaluateBtcBuyDecision(input: BuyDecisionInput): BuyDecision {
       suggestedAmountMyr: null,
       expectedRemainingAfterMyr: '0.00',
       topUpNeededMyr: '0.00',
-      reason: ['Your monthly BTC budget has been fully used.'],
+      reason: [
+        confirmedZero
+          ? "This month's confirmed BTC budget is RM0."
+          : spentMoreThanBudget
+            ? "This month's confirmed budget is below the amount already spent."
+            : 'Your monthly BTC budget has been fully used.',
+      ],
     };
   }
   if (

@@ -39,11 +39,11 @@ describe('LunoBtcDecisionService', () => {
   const eventRows: LunoBtcStrategyEvent[] = [];
   let service: LunoBtcDecisionService;
   let price = '309000';
-  let remaining = '50.00';
+  let remaining: string | null = '50.00';
   let used = '50.00';
   let status: 'READY' | 'PARTIAL' = 'READY';
   let classified: ClassifiedEvent[] = [];
-  let monthlyBudget = '100.00';
+  let monthlyBudget: string | null = '100.00';
   let budgetUpdatedAt: Date | null = null;
 
   const eventsRepo = {
@@ -510,5 +510,60 @@ describe('LunoBtcDecisionService', () => {
     expect(acted).toHaveLength(1);
     expect(acted[0].matchedTransactionRef).toBe('kept-20');
     expect(acted[0].suggestedAmountMyr).toBe('20');
+  });
+
+  it('stops on a confirmed RM0 budget and does not lock a zone', async () => {
+    monthlyBudget = '0.00';
+    used = '20.00';
+    remaining = '0.00';
+    classified = [
+      buy({
+        occurredAt: new Date('2026-09-10T02:00:00.000Z'),
+        myrAmount: '20',
+        reference: 'rm0-buy',
+      }),
+    ];
+    const decision = await service.recalculateCurrentBtcDecision('user-a', NOW);
+    expect(decision.action).toBe('STOP_BUYING_THIS_MONTH');
+    expect(decision.reason).toEqual([
+      "This month's confirmed BTC budget is RM0.",
+    ]);
+    expect(eventRows.some((row) => row.status === 'ACTED')).toBe(false);
+    expect(decision.monthlyUsedMyr).toBe('20.00');
+  });
+
+  it('blocks buying advice while the month is unconfirmed', async () => {
+    monthlyBudget = null;
+    remaining = null;
+    classified = [
+      buy({
+        occurredAt: new Date('2026-09-10T02:00:00.000Z'),
+        myrAmount: '20',
+        reference: 'unconfirmed-buy',
+      }),
+    ];
+    const decision = await service.recalculateCurrentBtcDecision('user-a', NOW);
+    expect(decision.action).toBe('BLOCKED');
+    expect(decision.suggestedAmountMyr).toBeNull();
+    expect(eventRows.some((row) => row.status === 'ACTED')).toBe(false);
+  });
+
+  it('keeps RM0 blocked while accounting is not ready', async () => {
+    status = 'PARTIAL';
+    monthlyBudget = '0.00';
+    remaining = '0.00';
+    const decision = await service.recalculateCurrentBtcDecision('user-a', NOW);
+    expect(decision.action).toBe('BLOCKED');
+  });
+
+  it('stops when a confirmed budget is lowered below the amount already spent', async () => {
+    monthlyBudget = '40.00';
+    used = '50.00';
+    remaining = '0.00';
+    const decision = await service.recalculateCurrentBtcDecision('user-a', NOW);
+    expect(decision.action).toBe('STOP_BUYING_THIS_MONTH');
+    expect(decision.reason).toEqual([
+      "This month's confirmed budget is below the amount already spent.",
+    ]);
   });
 });

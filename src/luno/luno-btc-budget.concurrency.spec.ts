@@ -158,7 +158,9 @@ describe('Luno budget conditional writes on local Postgres', () => {
 
     expect(amount.affected).toBe(1);
     expect(sleeve.affected).toBe(0);
-    expect(row.updatedAt.getTime()).toBeGreaterThan(observed.updatedAt.getTime());
+    expect(row.updatedAt.getTime()).toBeGreaterThan(
+      observed.updatedAt.getTime(),
+    );
     expect(Number(row.monthlyBudgetMyr)).toBe(200);
     expect(Number(row.normalBuyAllocationMyr)).toBe(80);
     expect(row.dipReserveAllocationMyr).toBeNull();
@@ -250,9 +252,7 @@ describe('Luno budget conditional writes on local Postgres', () => {
 
       expect(fulfilled).toHaveLength(1);
       expect(rejected).toHaveLength(1);
-      expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(
-        ConflictException,
-      );
+      expect(rejected[0].reason).toBeInstanceOf(ConflictException);
       const sleeveWon = Number(row.monthlyBudgetMyr) === 100;
       if (sleeveWon) {
         expect(row.updatedAt.toISOString()).toBe(original);
@@ -269,4 +269,156 @@ describe('Luno budget conditional writes on local Postgres', () => {
       await secondDb.destroy();
     }
   });
+
+  it('keeps one value when two first confirmations race', async () => {
+    const admin = source('postgres');
+    const firstDb = source(CONFIRM_PROBE);
+    const secondDb = source(CONFIRM_PROBE);
+    try {
+      await admin.initialize();
+      await admin.query(
+        `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
+        [CONFIRM_PROBE],
+      );
+      await admin.query(`DROP DATABASE IF EXISTS "${CONFIRM_PROBE}"`);
+      await admin.query(`CREATE DATABASE "${CONFIRM_PROBE}"`);
+      await admin.destroy();
+      await firstDb.initialize();
+      await secondDb.initialize();
+      await firstDb.query(BUDGET_TABLE);
+      const outcome = await raceFirstConfirmations(
+        firstDb.getRepository(LunoBtcMonthlyBudget),
+        secondDb.getRepository(LunoBtcMonthlyBudget),
+        '80',
+        '120',
+      );
+      expect(outcome.stored).toMatch(/^(80|120)(\.0+)?$/);
+      expect(outcome.rejected).toBeInstanceOf(ConflictException);
+      const again = await firstDb.query(
+        `SELECT monthly_budget_myr::text AS amount FROM luno_btc_monthly_budgets`,
+      );
+      expect(again).toHaveLength(1);
+    } finally {
+      await closeProbe(admin, firstDb, secondDb);
+    }
+  });
+
+  it('does not mix a concurrent RM0 confirmation with a positive one', async () => {
+    const admin = source('postgres');
+    const firstDb = source(CONFIRM_PROBE);
+    const secondDb = source(CONFIRM_PROBE);
+    try {
+      await admin.initialize();
+      await admin.query(
+        `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
+        [CONFIRM_PROBE],
+      );
+      await admin.query(`DROP DATABASE IF EXISTS "${CONFIRM_PROBE}"`);
+      await admin.query(`CREATE DATABASE "${CONFIRM_PROBE}"`);
+      await admin.destroy();
+      await firstDb.initialize();
+      await secondDb.initialize();
+      await firstDb.query(BUDGET_TABLE);
+      const outcome = await raceFirstConfirmations(
+        firstDb.getRepository(LunoBtcMonthlyBudget),
+        secondDb.getRepository(LunoBtcMonthlyBudget),
+        '0',
+        '50',
+      );
+      expect(['0', '50']).toContain(Number(outcome.stored).toString());
+      expect(outcome.rejected).toBeInstanceOf(ConflictException);
+      const rows = await firstDb.query(
+        `SELECT monthly_budget_myr::text AS amount FROM luno_btc_monthly_budgets`,
+      );
+      expect(rows).toHaveLength(1);
+      expect(
+        Number(rows[0].amount) === 0 || Number(rows[0].amount) === 50,
+      ).toBe(true);
+    } finally {
+      await closeProbe(admin, firstDb, secondDb);
+    }
+  });
 });
+
+async function closeProbe(
+  admin: DataSource,
+  firstDb: DataSource,
+  secondDb: DataSource,
+): Promise<void> {
+  if (firstDb.isInitialized) await firstDb.destroy();
+  if (secondDb.isInitialized) await secondDb.destroy();
+  if (admin.isInitialized) await admin.destroy();
+  const cleanup = source('postgres');
+  await cleanup.initialize();
+  await cleanup.query(
+    `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
+    [CONFIRM_PROBE],
+  );
+  await cleanup.query(`DROP DATABASE IF EXISTS "${CONFIRM_PROBE}"`);
+  await cleanup.destroy();
+}
+
+const CONFIRM_PROBE = `luno_v2a_p2_confirm_${process.pid}`;
+
+const BUDGET_TABLE = `
+  CREATE TABLE luno_btc_monthly_budgets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    budget_month DATE NOT NULL,
+    monthly_budget_myr NUMERIC(28, 18) NOT NULL,
+    normal_buy_allocation_myr NUMERIC(28, 18) NULL,
+    dip_reserve_allocation_myr NUMERIC(28, 18) NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_luno_btc_monthly_budgets_user_month UNIQUE (user_id, budget_month)
+  )
+`;
+
+async function raceFirstConfirmations(
+  firstRepo: Repository<LunoBtcMonthlyBudget>,
+  secondRepo: Repository<LunoBtcMonthlyBudget>,
+  left: string,
+  right: string,
+): Promise<{ stored: string; rejected: unknown }> {
+  let arrived = 0;
+  let release: () => void = () => undefined;
+  const bothRead = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  for (const repo of [firstRepo, secondRepo]) {
+    const originalFind = repo.findOne.bind(repo);
+    repo.findOne = (async (options: never) => {
+      const row = await originalFind(options);
+      arrived += 1;
+      if (arrived === 2) {
+        release();
+      }
+      if (arrived <= 2) {
+        await bothRead;
+      }
+      return row;
+    }) as typeof repo.findOne;
+  }
+  const [one, two] = await Promise.allSettled([
+    serviceFor(firstRepo).upsertCurrentBudget(
+      USER_ID,
+      { monthlyBudgetMyr: left },
+      WHEN,
+    ),
+    serviceFor(secondRepo).upsertCurrentBudget(
+      USER_ID,
+      { monthlyBudgetMyr: right },
+      WHEN,
+    ),
+  ]);
+  const fulfilled = [one, two].filter((item) => item.status === 'fulfilled');
+  const rejected = [one, two].filter((item) => item.status === 'rejected');
+  expect(fulfilled).toHaveLength(1);
+  expect(rejected).toHaveLength(1);
+  const stored = await firstRepo.findOne({ where: { userId: USER_ID } });
+  return {
+    stored: stored?.monthlyBudgetMyr ?? '',
+    rejected: rejected[0].reason,
+  };
+}

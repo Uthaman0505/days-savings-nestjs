@@ -210,7 +210,7 @@ export class LunoController {
     @Req() req: AuthedRequest,
     @Body() body: UpsertLunoBtcBudgetDto,
   ) {
-    return this.budget.upsertCurrentBudget(requireUserId(req), body);
+    return this.budget.patchCurrentBudget(requireUserId(req), body);
   }
 
   @Get('btc/budget/history')

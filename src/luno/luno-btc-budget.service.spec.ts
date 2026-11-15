@@ -116,17 +116,19 @@ describe('LunoBtcBudgetService', () => {
       }
       return saved;
     }),
-    update: jest.fn(async (id: string, partial: Partial<LunoBtcMonthlyBudget>) => {
-      const row = budgetRows.find((item) => item.id === id);
-      if (!row) {
-        return { affected: 0 };
-      }
-      Object.assign(row, partial);
-      if (partial.updatedAt === undefined) {
-        row.updatedAt = saveClock;
-      }
-      return { affected: 1 };
-    }),
+    update: jest.fn(
+      async (id: string, partial: Partial<LunoBtcMonthlyBudget>) => {
+        const row = budgetRows.find((item) => item.id === id);
+        if (!row) {
+          return { affected: 0 };
+        }
+        Object.assign(row, partial);
+        if (partial.updatedAt === undefined) {
+          row.updatedAt = saveClock;
+        }
+        return { affected: 1 };
+      },
+    ),
     createQueryBuilder: jest.fn(() => {
       const clauses: Array<{ sql: string; params?: Record<string, unknown> }> =
         [];
@@ -167,7 +169,9 @@ describe('LunoBtcBudgetService', () => {
           )
             ? row.normalBuyAllocationMyr == null
             : moneyEqual(row.normalBuyAllocationMyr, params.observedNormal);
-          const dipMatches = sql.includes('"dip_reserve_allocation_myr" IS NULL')
+          const dipMatches = sql.includes(
+            '"dip_reserve_allocation_myr" IS NULL',
+          )
             ? row.dipReserveAllocationMyr == null
             : moneyEqual(row.dipReserveAllocationMyr, params.observedDip);
           const matches =
@@ -307,11 +311,20 @@ describe('LunoBtcBudgetService', () => {
   });
 
   it('returns NOT_CONFIGURED without inventing a budget', async () => {
+    const saves = budgetsRepo.save.mock.calls.length;
+    const updates = budgetsRepo.update.mock.calls.length;
+    const writes = budgetsRepo.createQueryBuilder.mock.calls.length;
     const view = await service.getCurrentBudget('user-a', NOW);
     expect(view.status).toBe('NOT_CONFIGURED');
+    expect(view.confirmed).toBe(false);
+    expect(view.displayState).toBe('NOT_CONFIRMED');
     expect(view.monthlyBudgetMyr).toBeNull();
+    expect(view.suggestedBudget).toBeNull();
     expect(view.usedMyr).toBe('50.00');
     expect(view.maxAllowedNewSpendMyr).toBe('0.00');
+    expect(budgetsRepo.save.mock.calls.length).toBe(saves);
+    expect(budgetsRepo.update.mock.calls.length).toBe(updates);
+    expect(budgetsRepo.createQueryBuilder.mock.calls.length).toBe(writes);
   });
 
   it('marks LIMIT_REACHED and OVER_BUDGET from real used amount', async () => {
@@ -329,8 +342,11 @@ describe('LunoBtcBudgetService', () => {
       NOW,
     );
     expect(over.status).toBe('OVER_BUDGET');
+    expect(over.displayState).toBe('EXHAUSTED');
+    expect(over.confirmed).toBe(true);
     expect(over.remainingMyr).toBe('0.00');
     expect(over.maxAllowedNewSpendMyr).toBe('0.00');
+    expect(over.usedMyr).toBe('50.00');
   });
 
   it('isolates budgets and money buckets by user', async () => {
@@ -370,6 +386,14 @@ describe('LunoBtcBudgetService', () => {
     );
     const september = await service.getCurrentBudget('user-a', NOW);
     expect(september.status).toBe('NOT_CONFIGURED');
+    expect(september.confirmed).toBe(false);
+    expect(september.monthlyBudgetMyr).toBeNull();
+    expect(september.suggestedBudget).toEqual({
+      month: '2026-08',
+      monthlyBudgetMyr: '80.00',
+      normalBuyAllocationMyr: null,
+      dipReserveAllocationMyr: null,
+    });
     const history = await service.getBudgetHistory('user-a');
     expect(history).toEqual([
       {
@@ -508,6 +532,149 @@ describe('LunoBtcBudgetService', () => {
     expect(budgetRows[0].updatedAt).toEqual(revisedAt);
     expect(budgetRows[0].normalBuyAllocationMyr).toBeNull();
     expect(budgetRows[0].dipReserveAllocationMyr).toBeNull();
+  });
+
+  it('confirms RM0 and the example budgets without using a suggestion as the cap', async () => {
+    const november = new Date('2026-11-09T04:00:00.000Z');
+    await service.upsertCurrentBudget(
+      'user-a',
+      {
+        monthlyBudgetMyr: '100',
+        normalBuyAllocationMyr: '20',
+        dipReserveAllocationMyr: '30',
+      },
+      NOW,
+    );
+    const unconfirmed = await service.getCurrentBudget('user-a', november);
+    expect(unconfirmed.confirmed).toBe(false);
+    expect(unconfirmed.monthlyBudgetMyr).toBeNull();
+    expect(unconfirmed.maxAllowedNewSpendMyr).toBe('0.00');
+    expect(unconfirmed.suggestedBudget?.monthlyBudgetMyr).toBe('100.00');
+    const zero = await service.upsertCurrentBudget(
+      'user-a',
+      { monthlyBudgetMyr: '0' },
+      november,
+    );
+    expect(zero.confirmed).toBe(true);
+    expect(zero.monthlyBudgetMyr).toBe('0.00');
+    expect(zero.displayState).toBe('RM0_STOP');
+    expect(zero.remainingMyr).toBe('0.00');
+    expect(zero.suggestedBudget?.month).toBe('2026-09');
+    for (const amount of ['20', '50', '100', '200']) {
+      const view = await service.upsertCurrentBudget(
+        'user-a',
+        { monthlyBudgetMyr: amount },
+        november,
+      );
+      expect(view.confirmed).toBe(true);
+      expect(view.monthlyBudgetMyr).toBe(`${amount}.00`);
+      expect(view.remainingMyr).toBe(`${amount}.00`);
+      expect(view.displayState).toBe('CONFIRMED');
+    }
+  });
+
+  it('requires confirmation again after the Kuala Lumpur month changes', async () => {
+    await service.upsertCurrentBudget(
+      'user-a',
+      { monthlyBudgetMyr: '100', normalBuyAllocationMyr: '40' },
+      new Date('2026-10-31T15:30:00.000Z'),
+    );
+    const stillOctober = await service.getCurrentBudget(
+      'user-a',
+      new Date('2026-10-31T15:30:00.000Z'),
+    );
+    const november = await service.getCurrentBudget(
+      'user-a',
+      new Date('2026-10-31T16:00:00.000Z'),
+    );
+    expect(stillOctober.confirmed).toBe(true);
+    expect(stillOctober.month).toBe('2026-10');
+    expect(stillOctober.monthlyBudgetMyr).toBe('100.00');
+    expect(november.confirmed).toBe(false);
+    expect(november.month).toBe('2026-11');
+    expect(november.monthlyBudgetMyr).toBeNull();
+    expect(november.displayState).toBe('NOT_CONFIRMED');
+    expect(november.suggestedBudget).toEqual({
+      month: '2026-10',
+      monthlyBudgetMyr: '100.00',
+      normalBuyAllocationMyr: '40.00',
+      dipReserveAllocationMyr: null,
+    });
+    const savesBefore = budgetsRepo.save.mock.calls.length;
+    await service.getCurrentBudget(
+      'user-a',
+      new Date('2026-10-31T16:00:00.000Z'),
+    );
+    expect(budgetsRepo.save.mock.calls.length).toBe(savesBefore);
+  });
+
+  it('does not let PATCH confirm a month from the previous suggestion', async () => {
+    await service.upsertCurrentBudget(
+      'user-a',
+      {
+        monthlyBudgetMyr: '100',
+        normalBuyAllocationMyr: '20',
+        dipReserveAllocationMyr: '30',
+      },
+      NOW,
+    );
+    const november = new Date('2026-11-09T04:00:00.000Z');
+    await expect(
+      service.patchCurrentBudget(
+        'user-a',
+        {
+          monthlyBudgetMyr: '100',
+          normalBuyAllocationMyr: '20',
+          dipReserveAllocationMyr: '30',
+        },
+        november,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    const view = await service.getCurrentBudget('user-a', november);
+    expect(view.confirmed).toBe(false);
+    expect(view.monthlyBudgetMyr).toBeNull();
+    expect(view.suggestedBudget?.monthlyBudgetMyr).toBe('100.00');
+    expect(
+      budgetRows.filter((row) => row.budgetMonth.startsWith('2026-11')),
+    ).toHaveLength(0);
+    const confirmed = await service.upsertCurrentBudget(
+      'user-a',
+      { monthlyBudgetMyr: '0' },
+      november,
+    );
+    expect(confirmed.confirmed).toBe(true);
+    expect(confirmed.monthlyBudgetMyr).toBe('0.00');
+    const revised = await service.patchCurrentBudget(
+      'user-a',
+      { monthlyBudgetMyr: '20' },
+      november,
+    );
+    expect(revised.monthlyBudgetMyr).toBe('20.00');
+    expect(revised.confirmed).toBe(true);
+  });
+
+  it('turns a positive-budget database check into a clear RM0 error', async () => {
+    budgetsRepo.save.mockRejectedValueOnce({ code: '23514' });
+    await expect(
+      service.upsertCurrentBudget('user-a', { monthlyBudgetMyr: '0' }, NOW),
+    ).rejects.toThrow(
+      'RM0 could not be saved because the database still requires a positive monthly budget.',
+    );
+    expect(budgetRows).toHaveLength(0);
+  });
+
+  it('rejects a negative or non-finite confirmation', async () => {
+    await expect(
+      service.upsertCurrentBudget('user-a', { monthlyBudgetMyr: '-5' }, NOW),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.upsertCurrentBudget(
+        'user-a',
+        { monthlyBudgetMyr: 'Infinity' },
+        NOW,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(budgetRows).toHaveLength(0);
   });
 
   it('rejects allocation that exceeds monthly budget', async () => {
