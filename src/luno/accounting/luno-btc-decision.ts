@@ -22,8 +22,7 @@ export const DECISION_TTL_MS = 24 * 60 * 60 * 1000;
 export const FIRST_BUY_FRACTION = '0.20';
 export const STRONGER_BUY_FRACTION = '0.30';
 export const DEEPER_BUY_FRACTION = '0.40';
-const MATCH_ABS_TOLERANCE_MYR = '2';
-const MATCH_PCT_TOLERANCE = '15';
+export const PURCHASE_MATCH_PCT_TOLERANCE = '15';
 
 export type BuyDecisionInput = {
   accountingStatus: string;
@@ -126,9 +125,17 @@ export function evaluateBtcBuyDecision(input: BuyDecisionInput): BuyDecision {
     return blocked(input, used, maxAllowed, 'BTC accounting is not ready.');
   }
   if (input.monthlyBudgetMyr == null || input.monthlyRemainingMyr == null) {
-    return blocked(input, used, maxAllowed, 'Set your monthly BTC budget.');
+    return blocked(
+      input,
+      used,
+      maxAllowed,
+      "Confirm this month's BTC budget before buying advice.",
+    );
   }
   if (compareDecimal(input.monthlyRemainingMyr, '0') <= 0) {
+    const confirmedZero = compareDecimal(input.monthlyBudgetMyr, '0') === 0;
+    const spentMoreThanBudget =
+      compareDecimal(used, input.monthlyBudgetMyr) > 0;
     return {
       ...base(input, used, maxAllowed),
       action: 'STOP_BUYING_THIS_MONTH',
@@ -138,7 +145,13 @@ export function evaluateBtcBuyDecision(input: BuyDecisionInput): BuyDecision {
       suggestedAmountMyr: null,
       expectedRemainingAfterMyr: '0.00',
       topUpNeededMyr: '0.00',
-      reason: ['Your monthly BTC budget has been fully used.'],
+      reason: [
+        confirmedZero
+          ? "This month's confirmed BTC budget is RM0."
+          : spentMoreThanBudget
+            ? "This month's confirmed budget is below the amount already spent."
+            : 'Your monthly BTC budget has been fully used.',
+      ],
     };
   }
   if (
@@ -271,19 +284,18 @@ export function buyCashMyr(event: ClassifiedEvent): string {
 }
 
 export function amountsMatch(actualMyr: string, suggestedMyr: string): boolean {
-  const diff = absDecimal(subtractDecimalStrings(actualMyr, suggestedMyr));
-  if (compareDecimal(diff, MATCH_ABS_TOLERANCE_MYR) <= 0) {
-    return true;
-  }
   if (isZeroDecimal(suggestedMyr)) {
     return false;
   }
+  const diff = absDecimal(subtractDecimalStrings(actualMyr, suggestedMyr));
   const pct = divideDecimalStrings(
     multiplyDecimalStrings(diff, '100'),
     suggestedMyr,
     8,
   );
-  return pct != null && compareDecimal(pct, MATCH_PCT_TOLERANCE) <= 0;
+  return (
+    pct != null && compareDecimal(pct, PURCHASE_MATCH_PCT_TOLERANCE) <= 0
+  );
 }
 
 export function stagedTargetMyr(

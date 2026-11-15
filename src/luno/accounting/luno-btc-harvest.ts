@@ -1,4 +1,4 @@
-import { amountsMatch, priceDifferencePct } from './luno-btc-decision';
+import { priceDifferencePct } from './luno-btc-decision';
 import { previewFifoSale, type FifoSalePreview } from './luno-btc-sale-preview';
 import { BTC_DUST_TOLERANCE, type FifoLot } from './luno-btc.types';
 import {
@@ -510,7 +510,19 @@ export function harvestAmountsMatch(
   actual: string,
   suggested: string,
 ): boolean {
-  return amountsMatch(actual, suggested);
+  const diff = absDecimal(subtractDecimalStrings(actual, suggested));
+  if (compareDecimal(diff, '2') <= 0) {
+    return true;
+  }
+  if (isZeroDecimal(suggested)) {
+    return false;
+  }
+  const pct = divideDecimalStrings(
+    multiplyDecimalStrings(diff, '100'),
+    suggested,
+    8,
+  );
+  return pct != null && compareDecimal(pct, '15') <= 0;
 }
 
 export function harvestBtcQuantitiesMatch(

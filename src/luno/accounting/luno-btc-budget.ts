@@ -13,6 +13,12 @@ export type LunoBtcBudgetStatus =
   | 'OVER_BUDGET'
   | 'NOT_CONFIGURED';
 
+export type LunoBtcBudgetDisplayState =
+  | 'NOT_CONFIRMED'
+  | 'CONFIRMED'
+  | 'RM0_STOP'
+  | 'EXHAUSTED';
+
 export type LunoBtcBudgetConfig = {
   monthlyBudgetMyr: string;
   normalBuyAllocationMyr: string | null;
@@ -60,6 +66,25 @@ export function budgetStatus(
   return 'OVER_BUDGET';
 }
 
+export function budgetDisplayState(
+  monthlyBudgetMyr: string | null,
+  monthlyUsedMyr: string,
+): { state: LunoBtcBudgetDisplayState; label: string } {
+  if (monthlyBudgetMyr == null) {
+    return { state: 'NOT_CONFIRMED', label: 'Not confirmed' };
+  }
+  if (compareDecimal(monthlyBudgetMyr, '0') === 0) {
+    return { state: 'RM0_STOP', label: 'RM0 STOP' };
+  }
+  if (
+    compareDecimal(remainingBudgetMyr(monthlyBudgetMyr, monthlyUsedMyr), '0') <=
+    0
+  ) {
+    return { state: 'EXHAUSTED', label: 'Monthly budget exhausted' };
+  }
+  return { state: 'CONFIRMED', label: 'Confirmed' };
+}
+
 export function budgetStatusLabel(status: LunoBtcBudgetStatus): string {
   switch (status) {
     case 'WITHIN_BUDGET':
@@ -91,19 +116,22 @@ export function parseBudgetConfig(input: {
   normalBuyAllocationMyr?: string | null;
   dipReserveAllocationMyr?: string | null;
 }): LunoBtcBudgetConfig {
-  const monthlyBudgetMyr = asDecimalString(input.monthlyBudgetMyr);
-  if (compareDecimal(monthlyBudgetMyr, '0') <= 0) {
-    throw new BadRequestException('Monthly budget must be greater than 0.');
+  const monthlyBudgetMyr = parseBudgetAmount(
+    input.monthlyBudgetMyr,
+    'Monthly budget',
+  );
+  if (compareDecimal(monthlyBudgetMyr, '0') < 0) {
+    throw new BadRequestException('Monthly budget cannot be negative.');
   }
   const normal =
     input.normalBuyAllocationMyr == null || input.normalBuyAllocationMyr === ''
       ? null
-      : asDecimalString(input.normalBuyAllocationMyr);
+      : parseBudgetAmount(input.normalBuyAllocationMyr, 'Normal buying');
   const dip =
     input.dipReserveAllocationMyr == null ||
     input.dipReserveAllocationMyr === ''
       ? null
-      : asDecimalString(input.dipReserveAllocationMyr);
+      : parseBudgetAmount(input.dipReserveAllocationMyr, 'Dip reserve');
   if (normal != null && compareDecimal(normal, '0') < 0) {
     throw new BadRequestException('Normal buying cannot be negative.');
   }
@@ -134,6 +162,16 @@ export function parseBudgetConfig(input: {
     normalBuyAllocationMyr: normal,
     dipReserveAllocationMyr: dip,
   };
+}
+
+function parseBudgetAmount(value: string, label: string): string {
+  try {
+    return asDecimalString(value);
+  } catch {
+    throw new BadRequestException(
+      `${label} must be a finite decimal amount.`,
+    );
+  }
 }
 
 export function parsePositiveAmount(value: string): string {
