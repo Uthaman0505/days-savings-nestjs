@@ -168,9 +168,7 @@ function parseBudgetAmount(value: string, label: string): string {
   try {
     return asDecimalString(value);
   } catch {
-    throw new BadRequestException(
-      `${label} must be a finite decimal amount.`,
-    );
+    throw new BadRequestException(`${label} must be a finite decimal amount.`);
   }
 }
 
