@@ -1,6 +1,5 @@
 import 'reflect-metadata';
 import { ConflictException } from '@nestjs/common';
-import os from 'os';
 import { DataSource, type Repository } from 'typeorm';
 import { LunoBtcMonthlyBudget } from './entities/luno-btc-monthly-budget.entity';
 import {
@@ -8,22 +7,18 @@ import {
   LunoBtcBudgetService,
 } from './luno-btc-budget.service';
 import { User } from '../user/user.entity';
+import {
+  dropDisposableDatabase,
+  lunoTestDataSource,
+  recreateDisposableDatabase,
+} from './luno-test-postgres';
 
 const PROBE = `luno_v2a_p1_concurrency_${process.pid}`;
 const USER_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1';
 const WHEN = new Date('2026-11-09T04:00:00.000Z');
 
 function source(database: string): DataSource {
-  return new DataSource({
-    type: 'postgres',
-    host: '127.0.0.1',
-    port: 5432,
-    username: os.userInfo().username,
-    database,
-    entities: [User, LunoBtcMonthlyBudget],
-    synchronize: false,
-    logging: false,
-  });
+  return lunoTestDataSource(database, [User, LunoBtcMonthlyBudget]);
 }
 
 function serviceFor(
@@ -51,12 +46,7 @@ describe('Luno budget conditional writes on local Postgres', () => {
     try {
       admin = source('postgres');
       await admin.initialize();
-      await admin.query(
-        `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
-        [PROBE],
-      );
-      await admin.query(`DROP DATABASE IF EXISTS "${PROBE}"`);
-      await admin.query(`CREATE DATABASE "${PROBE}"`);
+      await recreateDisposableDatabase(admin, PROBE);
       db = source(PROBE);
       await db.initialize();
       await db.query(`
@@ -85,11 +75,7 @@ describe('Luno budget conditional writes on local Postgres', () => {
       await db.destroy();
     }
     if (admin?.isInitialized) {
-      await admin.query(
-        `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
-        [PROBE],
-      );
-      await admin.query(`DROP DATABASE IF EXISTS "${PROBE}"`);
+      await dropDisposableDatabase(admin, PROBE);
       await admin.destroy();
     }
   });
@@ -276,12 +262,7 @@ describe('Luno budget conditional writes on local Postgres', () => {
     const secondDb = source(CONFIRM_PROBE);
     try {
       await admin.initialize();
-      await admin.query(
-        `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
-        [CONFIRM_PROBE],
-      );
-      await admin.query(`DROP DATABASE IF EXISTS "${CONFIRM_PROBE}"`);
-      await admin.query(`CREATE DATABASE "${CONFIRM_PROBE}"`);
+      await recreateDisposableDatabase(admin, CONFIRM_PROBE);
       await admin.destroy();
       await firstDb.initialize();
       await secondDb.initialize();
@@ -309,12 +290,7 @@ describe('Luno budget conditional writes on local Postgres', () => {
     const secondDb = source(CONFIRM_PROBE);
     try {
       await admin.initialize();
-      await admin.query(
-        `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
-        [CONFIRM_PROBE],
-      );
-      await admin.query(`DROP DATABASE IF EXISTS "${CONFIRM_PROBE}"`);
-      await admin.query(`CREATE DATABASE "${CONFIRM_PROBE}"`);
+      await recreateDisposableDatabase(admin, CONFIRM_PROBE);
       await admin.destroy();
       await firstDb.initialize();
       await secondDb.initialize();
@@ -350,11 +326,7 @@ async function closeProbe(
   if (admin.isInitialized) await admin.destroy();
   const cleanup = source('postgres');
   await cleanup.initialize();
-  await cleanup.query(
-    `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
-    [CONFIRM_PROBE],
-  );
-  await cleanup.query(`DROP DATABASE IF EXISTS "${CONFIRM_PROBE}"`);
+  await dropDisposableDatabase(cleanup, CONFIRM_PROBE);
   await cleanup.destroy();
 }
 
